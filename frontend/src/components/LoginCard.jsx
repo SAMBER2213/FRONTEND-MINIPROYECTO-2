@@ -5,9 +5,10 @@ import {
   signInWithPopup,
   updateProfile,
 } from 'firebase/auth'
+import { useNavigate } from 'react-router-dom'
 import { auth, googleProvider } from '../config/firebase'
 import { useAuth } from '../context/useAuth'
-import { getApiErrorMessage } from '../services/api'
+import { getApiErrorMessage, getMyProfile } from '../services/api'
 import '../styles/LoginCard.css'
 
 const usernamePattern = /^[a-z0-9_]{3,20}$/
@@ -28,6 +29,7 @@ function validateRegisterForm({ displayName, username, email, password }) {
 
 function LoginCard() {
   const { completeProfile } = useAuth()
+  const navigate = useNavigate()
   const [showPassword, setShowPassword] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
@@ -91,8 +93,20 @@ function LoginCard() {
     setLoading(true)
 
     try {
-      await signInWithPopup(auth, googleProvider)
+      const result = await signInWithPopup(auth, googleProvider)
       setSuccess('Autenticación con Google exitosa. Validando perfil...')
+
+      // Verificar si el usuario ya tiene perfil en el backend
+      try {
+        await getMyProfile(result.user)
+        // Tiene perfil → va al dashboard (AuthContext lo maneja)
+      } catch (profileErr) {
+        if (profileErr.status === 404) {
+          // Usuario nuevo con Google → necesita elegir username
+          navigate('/complete-profile', { replace: true })
+        }
+        // Si hay otro error (backend caído) el AuthContext igual redirige
+      }
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
         setError('Error al iniciar con Google. Intenta de nuevo.')
