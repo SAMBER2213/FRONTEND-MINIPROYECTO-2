@@ -16,3 +16,21 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.app-state {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 24px;
+}
+
+.app-state__card {
+  background: #fff;
+  color: #2d3748;
+  border-radius: 12px;
+  padding: 24px 28px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.16);
+  font-weight: 700;
+}

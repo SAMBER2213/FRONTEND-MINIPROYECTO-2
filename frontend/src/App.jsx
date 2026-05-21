@@ -1,16 +1,44 @@
 import PropTypes from 'prop-types'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { AuthProvider } from './context/AuthContext'
+import { useAuth } from './context/useAuth'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import CompleteProfile from './pages/CompleteProfile'
 import './App.css'
 
-function PrivateRoute({ children }) {
-  const { user } = useAuth()
-  return user ? children : <Navigate to="/" replace />
+function LoadingScreen() {
+  return (
+    <main className="app-state" aria-live="polite">
+      <div className="app-state__card">Cargando sesión...</div>
+    </main>
+  )
 }
 
-PrivateRoute.propTypes = {
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth()
+
+  if (loading) return <LoadingScreen />
+  if (!user) return <Navigate to="/" replace />
+
+  return children
+}
+
+function RequireProfile({ children }) {
+  const { user, profile, loading } = useAuth()
+
+  if (loading) return <LoadingScreen />
+  if (!user) return <Navigate to="/" replace />
+  if (!profile) return <Navigate to="/complete-profile" replace />
+
+  return children
+}
+
+RequireAuth.propTypes = {
+  children: PropTypes.node.isRequired,
+}
+
+RequireProfile.propTypes = {
   children: PropTypes.node.isRequired,
 }
 
@@ -19,11 +47,19 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<Login />} />
       <Route
+        path="/complete-profile"
+        element={
+          <RequireAuth>
+            <CompleteProfile />
+          </RequireAuth>
+        }
+      />
+      <Route
         path="/dashboard"
         element={
-          <PrivateRoute>
+          <RequireProfile>
             <Dashboard />
-          </PrivateRoute>
+          </RequireProfile>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

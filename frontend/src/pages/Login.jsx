@@ -1,18 +1,18 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import LoginCard from '../components/LoginCard'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/useAuth'
 import '../styles/Login.css'
 
 function Login() {
-  const { user } = useAuth()
+  const { user, profile, needsProfile, loading } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (user) {
-      navigate('/dashboard')
-    }
-  }, [user, navigate])
+    if (loading) return
+    if (user && profile) navigate('/dashboard', { replace: true })
+    if (user && needsProfile) navigate('/complete-profile', { replace: true })
+  }, [user, profile, needsProfile, loading, navigate])
 
   return (
     <div className="login-page">

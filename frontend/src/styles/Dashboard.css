@@ -1,0 +1,81 @@
+.dashboard-page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #2d3748;
+  font-family: system-ui, sans-serif;
+}
+
+.dashboard-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px 32px;
+  text-align: center;
+  max-width: 460px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard-avatar {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: white;
+  margin: 0 auto 16px;
+}
+
+.dashboard-card h1 {
+  font-size: 26px;
+  margin-bottom: 8px;
+}
+
+.dashboard-user {
+  color: #4a5568;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.dashboard-username {
+  color: #667eea;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.dashboard-email {
+  color: #718096;
+  font-size: 14px;
+  margin-bottom: 22px;
+}
+
+.dashboard-status {
+  background: #f7f7ff;
+  border: 1px solid #e0e7ff;
+  border-radius: 10px;
+  color: #4a5568;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+
+.dashboard-logout {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}

@@ -1,28 +1,78 @@
 import { useState } from 'react'
-import { signInWithEmailAndPassword, signInWithPopup, createUserWithEmailAndPassword } from 'firebase/auth'
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  updateProfile,
+} from 'firebase/auth'
 import { auth, googleProvider } from '../config/firebase'
+import { useAuth } from '../context/useAuth'
+import { getApiErrorMessage } from '../services/api'
 import '../styles/LoginCard.css'
 
+const usernamePattern = /^[a-z0-9_]{3,20}$/
+
+function normalizeUsername(value) {
+  return value.trim().toLowerCase()
+}
+
+function validateRegisterForm({ displayName, username, email, password }) {
+  if (!displayName.trim()) return 'Escribe tu nombre para el perfil.'
+  if (!usernamePattern.test(normalizeUsername(username))) {
+    return 'El username debe tener 3 a 20 caracteres: letras minúsculas, números o guion bajo.'
+  }
+  if (!email.trim()) return 'Escribe tu correo electrónico.'
+  if (password.length < 6) return 'La contraseña debe tener al menos 6 caracteres.'
+  return ''
+}
+
 function LoginCard() {
+  const { completeProfile } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
+  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const resetFeedback = () => {
     setError('')
+    setSuccess('')
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    resetFeedback()
+
+    if (isRegister) {
+      const validationMessage = validateRegisterForm({ displayName, username, email, password })
+      if (validationMessage) {
+        setError(validationMessage)
+        return
+      }
+    }
+
     setLoading(true)
+
     try {
       if (isRegister) {
-        await createUserWithEmailAndPassword(auth, email, password)
+        const credentials = await createUserWithEmailAndPassword(auth, email.trim(), password)
+        await updateProfile(credentials.user, { displayName: displayName.trim() })
+        await completeProfile({
+          displayName: displayName.trim(),
+          username: normalizeUsername(username),
+          photoURL: credentials.user.photoURL,
+        })
+        setSuccess('Cuenta creada correctamente. Redirigiendo al dashboard...')
       } else {
-        await signInWithEmailAndPassword(auth, email, password)
+        await signInWithEmailAndPassword(auth, email.trim(), password)
+        setSuccess('Inicio de sesión exitoso. Cargando dashboard...')
       }
     } catch (err) {
-      const msgs = {
+      const firebaseMessages = {
         'auth/user-not-found': 'Usuario no encontrado',
         'auth/wrong-password': 'Contraseña incorrecta',
         'auth/email-already-in-use': 'El correo ya está registrado',
@@ -30,17 +80,19 @@ function LoginCard() {
         'auth/invalid-email': 'Correo electrónico inválido',
         'auth/invalid-credential': 'Correo o contraseña incorrectos',
       }
-      setError(msgs[err.code] || 'Ocurrió un error. Intenta de nuevo.')
+      setError(firebaseMessages[err.code] || getApiErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }
 
   const handleGoogle = async () => {
-    setError('')
+    resetFeedback()
     setLoading(true)
+
     try {
       await signInWithPopup(auth, googleProvider)
+      setSuccess('Autenticación con Google exitosa. Validando perfil...')
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
         setError('Error al iniciar con Google. Intenta de nuevo.')
@@ -48,6 +100,11 @@ function LoginCard() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const toggleMode = () => {
+    setIsRegister((current) => !current)
+    resetFeedback()
   }
 
   return (
@@ -70,6 +127,42 @@ function LoginCard() {
         aria-label={isRegister ? 'Formulario de registro' : 'Formulario de inicio de sesión'}
         noValidate
       >
+        {isRegister && (
+          <>
+            <div className="input-group">
+              <label htmlFor="displayName">Nombre visible</label>
+              <input
+                id="displayName"
+                type="text"
+                placeholder="Ej: Juan García"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                required
+                aria-required="true"
+                autoComplete="name"
+              />
+            </div>
+
+            <div className="input-group">
+              <label htmlFor="username">Username único</label>
+              <input
+                id="username"
+                type="text"
+                placeholder="Ej: juan_garcia"
+                value={username}
+                onChange={(event) => setUsername(normalizeUsername(event.target.value))}
+                required
+                aria-required="true"
+                aria-describedby="username-help"
+                autoComplete="username"
+              />
+              <small id="username-help" className="field-help">
+                3 a 20 caracteres. Solo letras minúsculas, números y guion bajo.
+              </small>
+            </div>
+          </>
+        )}
+
         <div className="input-group">
           <label htmlFor="email">Correo electrónico</label>
           <input
@@ -77,7 +170,7 @@ function LoginCard() {
             type="email"
             placeholder="ejemplo@correo.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             required
             aria-required="true"
             aria-label="Correo electrónico"
@@ -93,7 +186,7 @@ function LoginCard() {
               type={showPassword ? 'text' : 'password'}
               placeholder="Ingresa tu contraseña"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               required
               aria-required="true"
               aria-label="Contraseña"
@@ -102,7 +195,7 @@ function LoginCard() {
             <button
               type="button"
               className="show-btn"
-              onClick={() => setShowPassword(!showPassword)}
+              onClick={() => setShowPassword((current) => !current)}
               aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
               aria-pressed={showPassword}
             >
@@ -115,9 +208,19 @@ function LoginCard() {
           <p
             className="error-msg"
             role="alert"
-            aria-live="polite"
+            aria-live="assertive"
           >
             {error}
+          </p>
+        )}
+
+        {success && (
+          <p
+            className="success-msg"
+            role="status"
+            aria-live="polite"
+          >
+            {success}
           </p>
         )}
 
@@ -145,8 +248,8 @@ function LoginCard() {
       <div className="footer-text">
         {isRegister ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?'}{' '}
         <span
-          onClick={() => { setIsRegister(!isRegister); setError('') }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { setIsRegister(!isRegister); setError('') } }}
+          onClick={toggleMode}
+          onKeyDown={(event) => { if (event.key === 'Enter') toggleMode() }}
           role="button"
           tabIndex={0}
           aria-label={isRegister ? 'Ir a iniciar sesión' : 'Ir a registrarse'}
