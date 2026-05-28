@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/useAuth'
 import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import CompleteProfile from './pages/CompleteProfile'
 import './App.css'
@@ -55,14 +54,7 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
-      <Route
-        path="/dashboard"
-        element={
-          <RequireProfile>
-            <Dashboard />
-          </RequireProfile>
-        }
-      />
+      <Route path="/dashboard" element={<Navigate to="/perfil" replace />} />
       <Route
         path="/perfil"
         element={

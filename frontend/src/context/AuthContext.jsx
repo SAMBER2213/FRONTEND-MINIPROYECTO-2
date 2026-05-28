@@ -1,8 +1,8 @@
 import PropTypes from 'prop-types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { auth } from '../config/firebase'
-import { getMyProfile, saveProfile, updateMyProfile } from '../services/api'
+import { deleteMyAccount, getMyProfile, saveProfile, updateMyProfile } from '../services/api'
 import { AuthContext } from './authContextCore'
 
 
@@ -74,6 +74,17 @@ export function AuthProvider({ children }) {
     return updatedProfile
   }, [profile])
 
+
+  const deleteAccount = useCallback(async () => {
+    if (!auth.currentUser) {
+      throw new Error('Debes iniciar sesión para eliminar tu cuenta')
+    }
+
+    await deleteMyAccount(auth.currentUser)
+    setProfile(null)
+    await signOut(auth)
+  }, [])
+
   const refreshProfile = useCallback(() => loadProfile(auth.currentUser), [loadProfile])
 
   const value = useMemo(() => ({
@@ -87,6 +98,7 @@ export function AuthProvider({ children }) {
     completeProfile,
     updateProfileData,
     refreshProfile,
+    deleteAccount,
   }), [
     user,
     profile,
@@ -96,6 +108,7 @@ export function AuthProvider({ children }) {
     completeProfile,
     updateProfileData,
     refreshProfile,
+    deleteAccount,
   ])
 
   return (

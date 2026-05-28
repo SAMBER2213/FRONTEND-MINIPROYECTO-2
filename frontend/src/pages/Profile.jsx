@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../context/useAuth'
 import { checkUsernameAvailability, getApiErrorMessage } from '../services/api'
@@ -17,24 +18,39 @@ function normalizeUsername(value) {
   return value.trim().toLowerCase()
 }
 
+function getInitialAvatar(profile, user) {
+  return profile?.photoURL || user?.photoURL || 'avatar-blue'
+}
+
+function isRemoteAvatar(value) {
+  return typeof value === 'string' && value.startsWith('http')
+}
+
 function Profile() {
-  const { user, profile, updateProfileData } = useAuth()
-  const [displayName, setDisplayName] = useState(profile?.displayName || '')
+  const { user, profile, updateProfileData, deleteAccount } = useAuth()
+  const navigate = useNavigate()
+  const [displayName, setDisplayName] = useState(profile?.displayName || user?.displayName || '')
   const [username, setUsername] = useState(profile?.username || '')
-  const initialAvatar = profile?.photoURL?.startsWith?.('avatar-') ? profile.photoURL : 'avatar-blue'
-  const [photoURL, setPhotoURL] = useState(initialAvatar)
+  const [photoURL, setPhotoURL] = useState(getInitialAvatar(profile, user))
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const normalizedUsername = useMemo(() => normalizeUsername(username), [username])
   const currentUsername = profile?.username || ''
+  const googlePhotoURL = user?.photoURL || ''
+  const hasGooglePhoto = isRemoteAvatar(googlePhotoURL)
+  const showingRemoteAvatar = isRemoteAvatar(photoURL)
+  const previewClass = showingRemoteAvatar ? '' : photoURL
+  const previewInitial = (displayName || user?.email || 'S').charAt(0).toUpperCase()
 
   useEffect(() => {
-    setDisplayName(profile?.displayName || '')
+    setDisplayName(profile?.displayName || user?.displayName || '')
     setUsername(profile?.username || '')
-    setPhotoURL(profile?.photoURL?.startsWith?.('avatar-') ? profile.photoURL : 'avatar-blue')
-  }, [profile])
+    setPhotoURL(getInitialAvatar(profile, user))
+  }, [profile, user])
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -70,10 +86,25 @@ function Profile() {
       })
 
       setSuccess('Perfil actualizado correctamente.')
+      setConfirmDelete(false)
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    setError('')
+    setSuccess('')
+    setDeleteLoading(true)
+
+    try {
+      await deleteAccount()
+      navigate('/', { replace: true })
+    } catch (err) {
+      setError(getApiErrorMessage(err))
+      setDeleteLoading(false)
     }
   }
 
@@ -84,8 +115,8 @@ function Profile() {
     >
       <section className="profile-panel" aria-labelledby="profile-title">
         <div className="profile-summary">
-          <div className={`profile-avatar-preview ${photoURL}`} aria-hidden="true">
-            {(displayName || user?.email || 'S').charAt(0).toUpperCase()}
+          <div className={`profile-avatar-preview ${previewClass}`} aria-hidden="true">
+            {showingRemoteAvatar ? <img src={photoURL} alt="" /> : previewInitial}
           </div>
           <div>
             <h2 id="profile-title">Datos del usuario</h2>
@@ -127,6 +158,20 @@ function Profile() {
           <fieldset className="avatar-fieldset">
             <legend>Avatar</legend>
             <div className="avatar-options">
+              {hasGooglePhoto && (
+                <label className="avatar-option avatar-option-google">
+                  <input
+                    type="radio"
+                    name="avatar"
+                    value={googlePhotoURL}
+                    checked={photoURL === googlePhotoURL}
+                    onChange={(event) => setPhotoURL(event.target.value)}
+                  />
+                  <img src={googlePhotoURL} alt="" aria-hidden="true" />
+                  Foto de Google
+                </label>
+              )}
+
               {avatarOptions.map((avatar) => (
                 <label key={avatar.id} className={`avatar-option ${avatar.value}`}>
                   <input
@@ -136,7 +181,7 @@ function Profile() {
                     checked={photoURL === avatar.value}
                     onChange={(event) => setPhotoURL(event.target.value)}
                   />
-                  <span aria-hidden="true">{(displayName || 'S').charAt(0).toUpperCase()}</span>
+                  <span aria-hidden="true">{previewInitial}</span>
                   {avatar.label}
                 </label>
               ))}
@@ -158,10 +203,51 @@ function Profile() {
           {error && <p className="error-msg" role="alert">{error}</p>}
           {success && <p className="success-msg" role="status">{success}</p>}
 
-          <button className="login-btn" type="submit" disabled={loading}>
+          <button className="login-btn" type="submit" disabled={loading || deleteLoading}>
             {loading ? 'Guardando...' : 'Guardar cambios'}
           </button>
         </form>
+
+        <section className="delete-account-panel" aria-labelledby="delete-account-title">
+          <h3 id="delete-account-title">Eliminar cuenta</h3>
+          <p>
+            Esta acción borra tu perfil de la base de datos, libera tu username y elimina tu usuario de Firebase Auth.
+            Después podrás crear una cuenta nueva con el mismo correo si lo necesitas.
+          </p>
+
+          {!confirmDelete ? (
+            <button
+              className="danger-outline-btn"
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              disabled={loading || deleteLoading}
+            >
+              Eliminar cuenta
+            </button>
+          ) : (
+            <div className="delete-confirmation" role="alert">
+              <p>¿Seguro que deseas eliminar tu cuenta? Esta acción no se puede deshacer.</p>
+              <div className="delete-actions">
+                <button
+                  className="secondary-btn"
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  disabled={deleteLoading}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className="danger-btn"
+                  type="button"
+                  onClick={handleDeleteAccount}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Eliminando...' : 'Sí, eliminar cuenta'}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
       </section>
     </AppLayout>
   )

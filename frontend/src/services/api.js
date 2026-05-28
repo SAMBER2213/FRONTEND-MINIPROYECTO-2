@@ -41,11 +41,16 @@ export async function saveProfile(firebaseUser, profile) {
   })
 }
 
-
 export async function updateMyProfile(firebaseUser, profile) {
   return request('/api/users/me', firebaseUser, {
     method: 'PUT',
     body: JSON.stringify(profile),
+  })
+}
+
+export async function deleteMyAccount(firebaseUser) {
+  return request('/api/users/me', firebaseUser, {
+    method: 'DELETE',
   })
 }
 

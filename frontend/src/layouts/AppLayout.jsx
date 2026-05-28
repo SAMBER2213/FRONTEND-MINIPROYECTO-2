@@ -9,8 +9,8 @@ function AppLayout({ children, title, subtitle }) {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
 
-  const initial = (profile?.displayName || user?.email || 'S').charAt(0).toUpperCase()
-  const avatar = profile?.photoURL
+  const initial = (profile?.displayName || user?.displayName || user?.email || 'S').charAt(0).toUpperCase()
+  const avatar = profile?.photoURL || user?.photoURL || ''
   const hasRemoteAvatar = typeof avatar === 'string' && avatar.startsWith('http')
   const avatarClass = typeof avatar === 'string' && avatar.startsWith('avatar-') ? avatar : 'avatar-blue'
 
@@ -28,10 +28,6 @@ function AppLayout({ children, title, subtitle }) {
         </div>
 
         <nav className="sidebar-nav">
-          <NavLink to="/dashboard" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-            <span aria-hidden="true">⌂</span>
-            Dashboard
-          </NavLink>
           <NavLink to="/perfil" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <span aria-hidden="true">◉</span>
             Perfil
@@ -39,11 +35,11 @@ function AppLayout({ children, title, subtitle }) {
         </nav>
 
         <section className="sidebar-profile" aria-label="Perfil del usuario autenticado">
-          <div className={`sidebar-avatar ${avatarClass}`} aria-hidden="true">
+          <div className={`sidebar-avatar ${hasRemoteAvatar ? '' : avatarClass}`} aria-hidden="true">
             {hasRemoteAvatar ? <img src={avatar} alt="" /> : initial}
           </div>
           <div>
-            <p className="sidebar-name">{profile?.displayName || 'Usuario'}</p>
+            <p className="sidebar-name">{profile?.displayName || user?.displayName || 'Usuario'}</p>
             <p className="sidebar-username">@{profile?.username || 'sin_username'}</p>
           </div>
         </section>

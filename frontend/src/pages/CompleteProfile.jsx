@@ -21,7 +21,7 @@ function CompleteProfile() {
   const isUsernameValid = usernamePattern.test(normalizedUsername)
 
   useEffect(() => {
-    if (profile) navigate('/dashboard', { replace: true })
+    if (profile) navigate('/perfil', { replace: true })
   }, [profile, navigate])
 
   const handleSubmit = async (event) => {
@@ -47,8 +47,8 @@ function CompleteProfile() {
         username: normalizedUsername,
         photoURL: user?.photoURL || null,
       })
-      setSuccess('Perfil creado correctamente. Entrando al dashboard...')
-      navigate('/dashboard', { replace: true })
+      setSuccess('Perfil creado correctamente. Entrando al perfil...')
+      navigate('/perfil', { replace: true })
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {
