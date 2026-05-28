@@ -1,0 +1,359 @@
+.rooms-grid,
+.room-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 24px;
+}
+
+.rooms-panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.08);
+  padding: 28px;
+}
+
+.rooms-panel h2 {
+  font-size: 24px;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.rooms-panel p {
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.rooms-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.rooms-form {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.rooms-form textarea,
+.rooms-form input[type='text'],
+.rooms-form input[type='number'] {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 13px 14px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: #fff;
+  color: #0f172a;
+}
+
+.rooms-form textarea:focus,
+.rooms-form input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.rooms-form-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.checkbox-field {
+  margin-top: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #334155;
+  font-weight: 700;
+}
+
+.checkbox-field input {
+  accent-color: #2563eb;
+}
+
+.rooms-empty-state {
+  border: 1px dashed #cbd5e1;
+  border-radius: 18px;
+  padding: 26px;
+  background: #f8fafc;
+  color: #64748b;
+  text-align: center;
+}
+
+.rooms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.room-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.room-card h3 {
+  color: #0f172a;
+  font-size: 19px;
+  margin-bottom: 6px;
+}
+
+.room-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.room-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.room-badge.public {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.room-badge.private {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.room-meta {
+  margin: 18px 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.room-meta div {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.room-meta dt {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.room-meta dd {
+  color: #0f172a;
+  font-weight: 800;
+  margin: 0;
+}
+
+.room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.secondary-btn,
+.danger-outline-btn,
+.link-btn {
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondary-btn {
+  padding: 12px 16px;
+  background: #fff;
+  color: #1f3f95;
+  border: 1px solid #cbd5e1;
+}
+
+.secondary-btn:hover:not(:disabled),
+.secondary-btn:focus-visible {
+  border-color: #2563eb;
+  background: #eff6ff;
+  outline: none;
+}
+
+.danger-outline-btn {
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.danger-outline-btn:hover:not(:disabled),
+.danger-outline-btn:focus-visible {
+  background: #fef2f2;
+  outline: 3px solid rgba(239, 68, 68, 0.18);
+}
+
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  padding: 0;
+  text-align: left;
+}
+
+.link-btn:hover,
+.link-btn:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+.room-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.room-info-card,
+.realtime-status-card,
+.room-note-card,
+.participant-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  background: #fff;
+}
+
+.room-info-card {
+  padding: 16px;
+}
+
+.room-info-card strong {
+  display: block;
+  color: #0f172a;
+  font-size: 17px;
+  margin: 6px 0;
+}
+
+.room-info-label {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.realtime-status-card,
+.room-note-card {
+  margin-top: 16px;
+  padding: 18px;
+  background: #f8fbff;
+}
+
+.realtime-status-card h3,
+.room-note-card h3 {
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+
+.realtime-status-card ul {
+  margin: 14px 0 0 18px;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.participants-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.participant-card {
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.participant-card h3 {
+  margin-bottom: 4px;
+  color: #0f172a;
+  font-size: 17px;
+}
+
+.participant-card p {
+  margin: 0;
+}
+
+.participant-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  overflow: hidden;
+}
+
+.participant-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.participant-avatar.avatar-blue {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+}
+
+.participant-avatar.avatar-green {
+  background: linear-gradient(135deg, #059669, #34d399);
+}
+
+.participant-avatar.avatar-purple {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+}
+
+.participant-avatar.avatar-orange {
+  background: linear-gradient(135deg, #ea580c, #fb923c);
+}
+
+@media (max-width: 1100px) {
+  .rooms-grid,
+  .room-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .rooms-panel {
+    padding: 22px;
+  }
+
+  .rooms-panel-header,
+  .room-card-top,
+  .rooms-form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .checkbox-field {
+    margin-top: 0;
+  }
+
+  .room-actions {
+    flex-direction: column;
+  }
+}

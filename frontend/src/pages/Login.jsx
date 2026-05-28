@@ -10,7 +10,7 @@ function Login() {
 
   useEffect(() => {
     if (loading) return
-    if (user && profile) navigate('/perfil', { replace: true })
+    if (user && profile) navigate('/salas', { replace: true })
     if (user && needsProfile) navigate('/complete-profile', { replace: true })
   }, [user, profile, needsProfile, loading, navigate])
 

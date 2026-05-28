@@ -59,9 +59,36 @@ export async function checkUsernameAvailability(firebaseUser, username) {
   return request(`/api/users/username/${cleanUsername}/available`, firebaseUser)
 }
 
+export async function createRoom(firebaseUser, roomData) {
+  return request('/api/rooms', firebaseUser, {
+    method: 'POST',
+    body: JSON.stringify(roomData),
+  })
+}
+
+export async function getMyRooms(firebaseUser) {
+  return request('/api/rooms/my', firebaseUser)
+}
+
+export async function getRoomById(firebaseUser, roomId) {
+  return request(`/api/rooms/${roomId}`, firebaseUser)
+}
+
+export async function deleteRoom(firebaseUser, roomId) {
+  return request(`/api/rooms/${roomId}`, firebaseUser, {
+    method: 'DELETE',
+  })
+}
+
+export async function getRoomMessages(firebaseUser, roomId, limit = 50) {
+  return request(`/api/rooms/${roomId}/messages?limit=${limit}`, firebaseUser)
+}
+
 export function getApiErrorMessage(error) {
   if (error?.status === 409) return 'Ese username ya está en uso. Prueba con otro.'
+  if (error?.status === 404) return error.message || 'No se encontró la información solicitada.'
   if (error?.status === 400) return error.message || 'Revisa los campos del formulario.'
   if (error?.status === 401) return 'Tu sesión expiró. Inicia sesión nuevamente.'
+  if (error?.status === 403) return error.message || 'No tienes permiso para realizar esta acción.'
   return error?.message || 'Ocurrió un error inesperado.'
 }

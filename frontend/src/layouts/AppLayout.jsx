@@ -28,6 +28,10 @@ function AppLayout({ children, title, subtitle }) {
         </div>
 
         <nav className="sidebar-nav">
+          <NavLink to="/salas" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+            <span aria-hidden="true">▣</span>
+            Salas
+          </NavLink>
           <NavLink to="/perfil" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
             <span aria-hidden="true">◉</span>
             Perfil

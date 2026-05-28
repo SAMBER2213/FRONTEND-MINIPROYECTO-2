@@ -97,11 +97,11 @@ function LoginCard() {
           photoURL: avatar,
         })
         setSuccess('Cuenta creada correctamente. Redirigiendo al perfil...')
-        navigate('/perfil', { replace: true })
+        navigate('/salas', { replace: true })
       } else {
         await signInWithEmailAndPassword(auth, normalizeEmail(email), password)
         setSuccess('Inicio de sesión exitoso. Cargando perfil...')
-        navigate('/perfil', { replace: true })
+        navigate('/salas', { replace: true })
       }
     } catch (err) {
       const firebaseMessages = {
@@ -136,7 +136,7 @@ function LoginCard() {
       // Verificar si el usuario ya tiene perfil en el backend
       try {
         await getMyProfile(result.user)
-        navigate('/perfil', { replace: true })
+        navigate('/salas', { replace: true })
       } catch (profileErr) {
         if (profileErr.status === 404) {
           // Usuario nuevo con Google → necesita elegir username

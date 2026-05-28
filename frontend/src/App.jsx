@@ -5,6 +5,8 @@ import { useAuth } from './context/useAuth'
 import Login from './pages/Login'
 import Profile from './pages/Profile'
 import CompleteProfile from './pages/CompleteProfile'
+import Rooms from './pages/Rooms'
+import RoomDetail from './pages/RoomDetail'
 import './App.css'
 
 function LoadingScreen() {
@@ -54,12 +56,28 @@ function AppRoutes() {
           </RequireAuth>
         }
       />
-      <Route path="/dashboard" element={<Navigate to="/perfil" replace />} />
+      <Route path="/dashboard" element={<Navigate to="/salas" replace />} />
       <Route
         path="/perfil"
         element={
           <RequireProfile>
             <Profile />
+          </RequireProfile>
+        }
+      />
+      <Route
+        path="/salas"
+        element={
+          <RequireProfile>
+            <Rooms />
+          </RequireProfile>
+        }
+      />
+      <Route
+        path="/salas/:roomId"
+        element={
+          <RequireProfile>
+            <RoomDetail />
           </RequireProfile>
         }
       />
