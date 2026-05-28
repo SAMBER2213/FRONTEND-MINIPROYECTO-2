@@ -13,8 +13,36 @@ import '../styles/LoginCard.css'
 
 const usernamePattern = /^[a-z0-9_]{3,20}$/
 
+const avatarOptions = [
+  {
+    id: 'blue',
+    label: 'Avatar azul',
+    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=2563eb&textColor=ffffff',
+  },
+  {
+    id: 'purple',
+    label: 'Avatar morado',
+    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=7c3aed&textColor=ffffff',
+  },
+  {
+    id: 'green',
+    label: 'Avatar verde',
+    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=059669&textColor=ffffff',
+  },
+  {
+    id: 'orange',
+    label: 'Avatar naranja',
+    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=ea580c&textColor=ffffff',
+  },
+]
+
 function normalizeUsername(value) {
   return value.trim().toLowerCase()
+}
+
+function buildAvatarUrl(baseUrl, username, displayName) {
+  const seed = normalizeUsername(username) || displayName.trim() || 'StudySync'
+  return baseUrl.replace('seed=StudySync', `seed=${encodeURIComponent(seed)}`)
 }
 
 function validateRegisterForm({ displayName, username, email, password }) {
@@ -33,6 +61,7 @@ function LoginCard() {
   const [showPassword, setShowPassword] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
+  const [selectedAvatar, setSelectedAvatar] = useState(avatarOptions[0].url)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isRegister, setIsRegister] = useState(false)
@@ -61,17 +90,37 @@ function LoginCard() {
 
     try {
       if (isRegister) {
+        const normalizedUsername = normalizeUsername(username)
+        const avatarUrl = buildAvatarUrl(selectedAvatar, normalizedUsername, displayName)
         const credentials = await createUserWithEmailAndPassword(auth, email.trim(), password)
-        await updateProfile(credentials.user, { displayName: displayName.trim() })
+
+        await updateProfile(credentials.user, {
+          displayName: displayName.trim(),
+          photoURL: avatarUrl,
+        })
+
         await completeProfile({
           displayName: displayName.trim(),
-          username: normalizeUsername(username),
-          photoURL: credentials.user.photoURL,
+          username: normalizedUsername,
+          photoURL: avatarUrl,
         })
+
         setSuccess('Cuenta creada correctamente. Redirigiendo al dashboard...')
+        navigate('/dashboard', { replace: true })
       } else {
-        await signInWithEmailAndPassword(auth, email.trim(), password)
-        setSuccess('Inicio de sesión exitoso. Cargando dashboard...')
+        const credentials = await signInWithEmailAndPassword(auth, email.trim(), password)
+
+        try {
+          await getMyProfile(credentials.user)
+          setSuccess('Inicio de sesión exitoso. Cargando dashboard...')
+          navigate('/dashboard', { replace: true })
+        } catch (profileErr) {
+          if (profileErr.status === 404) {
+            setError('No se encontró un perfil para esta cuenta. Regístrate nuevamente o contacta al equipo.')
+          } else {
+            throw profileErr
+          }
+        }
       }
     } catch (err) {
       const firebaseMessages = {
@@ -96,20 +145,19 @@ function LoginCard() {
       const result = await signInWithPopup(auth, googleProvider)
       setSuccess('Autenticación con Google exitosa. Validando perfil...')
 
-      // Verificar si el usuario ya tiene perfil en el backend
       try {
         await getMyProfile(result.user)
-        // Tiene perfil → va al dashboard (AuthContext lo maneja)
+        navigate('/dashboard', { replace: true })
       } catch (profileErr) {
         if (profileErr.status === 404) {
-          // Usuario nuevo con Google → necesita elegir username
           navigate('/complete-profile', { replace: true })
+        } else {
+          throw profileErr
         }
-        // Si hay otro error (backend caído) el AuthContext igual redirige
       }
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
-        setError('Error al iniciar con Google. Intenta de nuevo.')
+        setError(getApiErrorMessage(err) || 'Error al iniciar con Google. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -174,6 +222,27 @@ function LoginCard() {
                 3 a 20 caracteres. Solo letras minúsculas, números y guion bajo.
               </small>
             </div>
+
+            <fieldset className="avatar-fieldset">
+              <legend>Avatar</legend>
+              <div className="avatar-options" role="radiogroup" aria-label="Seleccionar avatar">
+                {avatarOptions.map((avatar) => (
+                  <label
+                    key={avatar.id}
+                    className={`avatar-option ${selectedAvatar === avatar.url ? 'avatar-option--active' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="avatar"
+                      value={avatar.url}
+                      checked={selectedAvatar === avatar.url}
+                      onChange={() => setSelectedAvatar(avatar.url)}
+                    />
+                    <img src={buildAvatarUrl(avatar.url, username, displayName)} alt={avatar.label} />
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </>
         )}
 

@@ -183,3 +183,51 @@
   opacity: 0.7;
   transform: none;
 }
+
+.avatar-fieldset {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.avatar-fieldset legend {
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 6px;
+}
+
+.avatar-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.avatar-option {
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  padding: 6px;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.avatar-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.avatar-option img {
+  border-radius: 50%;
+  height: 44px;
+  width: 44px;
+}
+
+.avatar-option--active,
+.avatar-option:focus-within {
+  background: #f7f7ff;
+  border-color: #667eea;
+}
