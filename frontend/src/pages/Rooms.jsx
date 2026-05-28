@@ -23,6 +23,7 @@ function Rooms() {
   const [maxParticipants, setMaxParticipants] = useState(10)
   const [isPrivate, setIsPrivate] = useState(false)
   const [rooms, setRooms] = useState([])
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [loadingRooms, setLoadingRooms] = useState(true)
   const [creating, setCreating] = useState(false)
   const [deletingRoomId, setDeletingRoomId] = useState('')
@@ -49,6 +50,13 @@ function Rooms() {
     loadRooms()
   }, [loadRooms])
 
+  const resetForm = () => {
+    setRoomName('')
+    setDescription('')
+    setIsPrivate(false)
+    setMaxParticipants(10)
+  }
+
   const handleCreateRoom = async (event) => {
     event.preventDefault()
     setError('')
@@ -69,11 +77,9 @@ function Rooms() {
         maxParticipants: Number(maxParticipants) || 10,
       })
 
-      setSuccess('Sala creada correctamente. Entrando a la sala...')
-      setRoomName('')
-      setDescription('')
-      setIsPrivate(false)
-      setMaxParticipants(10)
+      setSuccess('Sala creada correctamente.')
+      resetForm()
+      setShowCreateForm(false)
       await loadRooms()
       navigate(`/salas/${response.data.id}`, { replace: true })
     } catch (err) {
@@ -105,17 +111,36 @@ function Rooms() {
   return (
     <AppLayout
       title="Salas de estudio"
-      subtitle="Crea una sala con ID único y visualiza las salas propias registradas en StudySync."
+      subtitle="Crea salas con ID único y visualiza los espacios que has creado."
     >
-      <div className="rooms-grid">
-        <section className="rooms-panel" aria-labelledby="create-room-title">
-          <h2 id="create-room-title">Crear nueva sala</h2>
-          <p>
-            Define el nombre, la descripción y la capacidad de la sala. Al crearla se genera un ID único y
-            entras como anfitrión.
-          </p>
+      <section className="rooms-panel rooms-main-panel" aria-labelledby="my-rooms-title">
+        <div className="rooms-topbar">
+          <div>
+            <h2 id="my-rooms-title">Mis salas</h2>
+            <p>Lista de salas creadas por el usuario autenticado.</p>
+          </div>
+          <div className="rooms-topbar-actions">
+            <button className="secondary-btn" type="button" onClick={loadRooms} disabled={loadingRooms}>
+              {loadingRooms ? 'Actualizando...' : 'Actualizar'}
+            </button>
+            <button
+              className="create-room-btn"
+              type="button"
+              onClick={() => {
+                setError('')
+                setSuccess('')
+                setShowCreateForm((current) => !current)
+              }}
+              aria-expanded={showCreateForm}
+            >
+              <span aria-hidden="true">+</span>
+              Crear sala
+            </button>
+          </div>
+        </div>
 
-          <form className="rooms-form" onSubmit={handleCreateRoom} noValidate>
+        {showCreateForm && (
+          <form className="rooms-form create-room-form" onSubmit={handleCreateRoom} noValidate>
             <div className="input-group">
               <label htmlFor="room-name">Nombre de la sala</label>
               <input
@@ -134,8 +159,8 @@ function Rooms() {
                 id="room-description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                placeholder="Ej: Repaso para el parcial y resolución de ejercicios."
-                rows="4"
+                placeholder="Ej: Repaso para el parcial."
+                rows="3"
               />
             </div>
 
@@ -162,84 +187,77 @@ function Rooms() {
               </label>
             </div>
 
-            {error && <p className="error-msg" role="alert">{error}</p>}
-            {success && <p className="success-msg" role="status">{success}</p>}
-
-            <button className="login-btn" type="submit" disabled={creating}>
-              {creating ? 'Creando sala...' : 'Crear sala'}
-            </button>
+            <div className="create-form-actions">
+              <button className="secondary-btn" type="button" onClick={() => setShowCreateForm(false)} disabled={creating}>
+                Cancelar
+              </button>
+              <button className="login-btn" type="submit" disabled={creating}>
+                {creating ? 'Creando...' : 'Guardar sala'}
+              </button>
+            </div>
           </form>
-        </section>
+        )}
 
-        <section className="rooms-panel" aria-labelledby="my-rooms-title">
-          <div className="rooms-panel-header">
-            <div>
-              <h2 id="my-rooms-title">Mis salas</h2>
-              <p>Lista de salas creadas por el usuario autenticado.</p>
-            </div>
-            <button className="secondary-btn" type="button" onClick={loadRooms} disabled={loadingRooms}>
-              {loadingRooms ? 'Actualizando...' : 'Actualizar'}
-            </button>
+        {error && <p className="error-msg" role="alert">{error}</p>}
+        {success && <p className="success-msg" role="status">{success}</p>}
+
+        {loadingRooms ? (
+          <div className="rooms-empty-state">Cargando salas...</div>
+        ) : rooms.length === 0 ? (
+          <div className="rooms-empty-state">
+            Aún no has creado salas. Crea la primera para empezar a organizar tus espacios de estudio.
           </div>
-
-          {loadingRooms ? (
-            <div className="rooms-empty-state">Cargando salas...</div>
-          ) : rooms.length === 0 ? (
-            <div className="rooms-empty-state">
-              Aún no has creado salas. Crea la primera para empezar a organizar tus espacios de estudio.
-            </div>
-          ) : (
-            <div className="rooms-list">
-              {rooms.map((room) => (
-                <article key={room.id} className="room-card">
-                  <div className="room-card-top">
-                    <div>
-                      <h3>{room.name}</h3>
-                      <p>{room.description || 'Sin descripción registrada.'}</p>
-                    </div>
-                    <span className={`room-badge ${room.isPrivate ? 'private' : 'public'}`}>
-                      {room.isPrivate ? 'Privada' : 'Pública'}
-                    </span>
+        ) : (
+          <div className="rooms-list rooms-list-grid">
+            {rooms.map((room) => (
+              <article key={room.id} className="room-card">
+                <div className="room-card-top">
+                  <div>
+                    <h3>{room.name}</h3>
+                    <p>{room.description || 'Sin descripción registrada.'}</p>
                   </div>
+                  <span className={`room-badge ${room.isPrivate ? 'private' : 'public'}`}>
+                    {room.isPrivate ? 'Privada' : 'Pública'}
+                  </span>
+                </div>
 
-                  <dl className="room-meta">
-                    <div>
-                      <dt>ID único</dt>
-                      <dd>{room.roomCode || room.id}</dd>
-                    </div>
-                    <div>
-                      <dt>Participantes</dt>
-                      <dd>{room.participantCount ?? 0} / {room.maxParticipants ?? 10}</dd>
-                    </div>
-                    <div>
-                      <dt>Creada</dt>
-                      <dd>{formatDate(room.createdAt)}</dd>
-                    </div>
-                  </dl>
-
-                  <div className="room-actions">
-                    <button
-                      className="secondary-btn"
-                      type="button"
-                      onClick={() => navigate(`/salas/${room.id}`)}
-                    >
-                      Entrar a la sala
-                    </button>
-                    <button
-                      className="danger-outline-btn"
-                      type="button"
-                      onClick={() => handleDeleteRoom(room.id)}
-                      disabled={deletingRoomId === room.id}
-                    >
-                      {deletingRoomId === room.id ? 'Eliminando...' : 'Eliminar'}
-                    </button>
+                <dl className="room-meta">
+                  <div>
+                    <dt>ID único</dt>
+                    <dd>{room.roomCode || room.id}</dd>
                   </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
+                  <div>
+                    <dt>Participantes</dt>
+                    <dd>{room.participantCount ?? 0} / {room.maxParticipants ?? 10}</dd>
+                  </div>
+                  <div>
+                    <dt>Creada</dt>
+                    <dd>{formatDate(room.createdAt)}</dd>
+                  </div>
+                </dl>
+
+                <div className="room-actions">
+                  <button
+                    className="secondary-btn"
+                    type="button"
+                    onClick={() => navigate(`/salas/${room.id}`)}
+                  >
+                    Entrar a la sala
+                  </button>
+                  <button
+                    className="danger-outline-btn"
+                    type="button"
+                    onClick={() => handleDeleteRoom(room.id)}
+                    disabled={deletingRoomId === room.id}
+                  >
+                    {deletingRoomId === room.id ? 'Eliminando...' : 'Eliminar'}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     </AppLayout>
   )
 }
