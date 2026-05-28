@@ -5,13 +5,14 @@ import { useAuth } from '../context/useAuth'
 import '../styles/Login.css'
 
 function Login() {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, needsProfile, loading } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
     if (loading) return
     if (user && profile) navigate('/dashboard', { replace: true })
-  }, [user, profile, loading, navigate])
+    if (user && needsProfile) navigate('/complete-profile', { replace: true })
+  }, [user, profile, needsProfile, loading, navigate])
 
   return (
     <div className="login-page">

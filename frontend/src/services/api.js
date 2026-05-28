@@ -1,8 +1,4 @@
-const DEFAULT_API_BASE_URL = import.meta.env.DEV
-  ? 'http://localhost:3001'
-  : 'https://studysync-main-api.onrender.com'
-
-const API_BASE_URL = (import.meta.env.VITE_MAIN_API_URL || DEFAULT_API_BASE_URL).replace(/\/$/, '')
+const API_BASE_URL = import.meta.env.VITE_MAIN_API_URL || 'http://localhost:3001'
 
 async function getToken(firebaseUser) {
   if (!firebaseUser) {
@@ -13,20 +9,14 @@ async function getToken(firebaseUser) {
 
 async function request(path, firebaseUser, options = {}) {
   const token = await getToken(firebaseUser)
-  let response
-
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(options.headers || {}),
-      },
-    })
-  } catch {
-    throw new Error('No se pudo conectar con el servidor. Revisa la URL del backend o la configuración CORS.')
-  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  })
 
   const payload = await response.json().catch(() => ({}))
 
@@ -47,6 +37,14 @@ export async function getMyProfile(firebaseUser) {
 export async function saveProfile(firebaseUser, profile) {
   return request('/api/users/profile', firebaseUser, {
     method: 'POST',
+    body: JSON.stringify(profile),
+  })
+}
+
+
+export async function updateMyProfile(firebaseUser, profile) {
+  return request('/api/users/me', firebaseUser, {
+    method: 'PUT',
     body: JSON.stringify(profile),
   })
 }

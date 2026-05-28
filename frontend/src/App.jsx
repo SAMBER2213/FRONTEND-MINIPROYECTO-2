@@ -4,6 +4,7 @@ import { AuthProvider } from './context/AuthContext'
 import { useAuth } from './context/useAuth'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Profile from './pages/Profile'
 import CompleteProfile from './pages/CompleteProfile'
 import './App.css'
 
@@ -59,6 +60,14 @@ function AppRoutes() {
         element={
           <RequireProfile>
             <Dashboard />
+          </RequireProfile>
+        }
+      />
+      <Route
+        path="/perfil"
+        element={
+          <RequireProfile>
+            <Profile />
           </RequireProfile>
         }
       />

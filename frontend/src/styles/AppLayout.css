@@ -1,0 +1,175 @@
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  background: #f5f7fb;
+  color: #0f172a;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.app-sidebar {
+  min-height: 100vh;
+  background: #1f3f95;
+  color: #fff;
+  padding: 28px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.brand-logo,
+.sidebar-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #1f3f95;
+  font-weight: 800;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #dbeafe;
+  text-decoration: none;
+  font-weight: 700;
+  padding: 14px 16px;
+  border-radius: 12px;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-link:hover,
+.sidebar-link:focus-visible,
+.sidebar-link.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  outline: none;
+}
+
+.sidebar-profile {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.sidebar-avatar {
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.sidebar-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sidebar-name {
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.sidebar-username {
+  color: #bfdbfe;
+  font-size: 14px;
+}
+
+.app-content {
+  min-width: 0;
+  padding: 28px 36px;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 26px;
+}
+
+.app-header h1 {
+  font-size: 30px;
+  margin-bottom: 6px;
+}
+
+.app-header p {
+  color: #64748b;
+}
+
+.logout-btn {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 18px;
+  background: #ef4444;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.logout-btn:hover,
+.logout-btn:focus-visible {
+  background: #dc2626;
+  outline: 3px solid rgba(239, 68, 68, 0.22);
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-sidebar {
+    min-height: auto;
+  }
+
+  .sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+.sidebar-avatar.avatar-blue {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  color: #fff;
+}
+
+.sidebar-avatar.avatar-green {
+  background: linear-gradient(135deg, #059669, #34d399);
+  color: #fff;
+}
+
+.sidebar-avatar.avatar-purple {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+  color: #fff;
+}
+
+.sidebar-avatar.avatar-orange {
+  background: linear-gradient(135deg, #ea580c, #fb923c);
+  color: #fff;
+}

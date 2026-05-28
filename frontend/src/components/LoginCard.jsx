@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import {
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signOut,
   updateProfile,
 } from 'firebase/auth'
 import { useNavigate } from 'react-router-dom'
@@ -12,37 +14,25 @@ import { getApiErrorMessage, getMyProfile } from '../services/api'
 import '../styles/LoginCard.css'
 
 const usernamePattern = /^[a-z0-9_]{3,20}$/
+const institutionalDomain = '@correounivalle.edu.co'
 
 const avatarOptions = [
-  {
-    id: 'blue',
-    label: 'Avatar azul',
-    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=2563eb&textColor=ffffff',
-  },
-  {
-    id: 'purple',
-    label: 'Avatar morado',
-    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=7c3aed&textColor=ffffff',
-  },
-  {
-    id: 'green',
-    label: 'Avatar verde',
-    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=059669&textColor=ffffff',
-  },
-  {
-    id: 'orange',
-    label: 'Avatar naranja',
-    url: 'https://api.dicebear.com/7.x/initials/svg?seed=StudySync&backgroundColor=ea580c&textColor=ffffff',
-  },
+  { id: 'blue', label: 'Azul', value: 'avatar-blue' },
+  { id: 'green', label: 'Verde', value: 'avatar-green' },
+  { id: 'purple', label: 'Morado', value: 'avatar-purple' },
+  { id: 'orange', label: 'Naranja', value: 'avatar-orange' },
 ]
 
 function normalizeUsername(value) {
   return value.trim().toLowerCase()
 }
 
-function buildAvatarUrl(baseUrl, username, displayName) {
-  const seed = normalizeUsername(username) || displayName.trim() || 'StudySync'
-  return baseUrl.replace('seed=StudySync', `seed=${encodeURIComponent(seed)}`)
+function normalizeEmail(value) {
+  return value.trim().toLowerCase()
+}
+
+function isInstitutionalEmail(value) {
+  return normalizeEmail(value).endsWith(institutionalDomain)
 }
 
 function validateRegisterForm({ displayName, username, email, password }) {
@@ -51,6 +41,7 @@ function validateRegisterForm({ displayName, username, email, password }) {
     return 'El username debe tener 3 a 20 caracteres: letras minúsculas, números o guion bajo.'
   }
   if (!email.trim()) return 'Escribe tu correo electrónico.'
+  if (!isInstitutionalEmail(email)) return `Usa tu correo institucional ${institutionalDomain}.`
   if (password.length < 6) return 'La contraseña debe tener al menos 6 caracteres.'
   return ''
 }
@@ -61,9 +52,9 @@ function LoginCard() {
   const [showPassword, setShowPassword] = useState(false)
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
-  const [selectedAvatar, setSelectedAvatar] = useState(avatarOptions[0].url)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [avatar, setAvatar] = useState('avatar-blue')
   const [isRegister, setIsRegister] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -90,37 +81,27 @@ function LoginCard() {
 
     try {
       if (isRegister) {
-        const normalizedUsername = normalizeUsername(username)
-        const avatarUrl = buildAvatarUrl(selectedAvatar, normalizedUsername, displayName)
-        const credentials = await createUserWithEmailAndPassword(auth, email.trim(), password)
+        const cleanEmail = normalizeEmail(email)
+        const methods = await fetchSignInMethodsForEmail(auth, cleanEmail)
+        if (methods.length > 0) {
+          setError('El correo ya está registrado. Inicia sesión o usa otro correo institucional.')
+          setLoading(false)
+          return
+        }
 
-        await updateProfile(credentials.user, {
-          displayName: displayName.trim(),
-          photoURL: avatarUrl,
-        })
-
+        const credentials = await createUserWithEmailAndPassword(auth, cleanEmail, password)
+        await updateProfile(credentials.user, { displayName: displayName.trim() })
         await completeProfile({
           displayName: displayName.trim(),
-          username: normalizedUsername,
-          photoURL: avatarUrl,
+          username: normalizeUsername(username),
+          photoURL: avatar,
         })
-
         setSuccess('Cuenta creada correctamente. Redirigiendo al dashboard...')
         navigate('/dashboard', { replace: true })
       } else {
-        const credentials = await signInWithEmailAndPassword(auth, email.trim(), password)
-
-        try {
-          await getMyProfile(credentials.user)
-          setSuccess('Inicio de sesión exitoso. Cargando dashboard...')
-          navigate('/dashboard', { replace: true })
-        } catch (profileErr) {
-          if (profileErr.status === 404) {
-            setError('No se encontró un perfil para esta cuenta. Regístrate nuevamente o contacta al equipo.')
-          } else {
-            throw profileErr
-          }
-        }
+        await signInWithEmailAndPassword(auth, normalizeEmail(email), password)
+        setSuccess('Inicio de sesión exitoso. Cargando dashboard...')
+        navigate('/dashboard', { replace: true })
       }
     } catch (err) {
       const firebaseMessages = {
@@ -143,21 +124,29 @@ function LoginCard() {
 
     try {
       const result = await signInWithPopup(auth, googleProvider)
+
+      if (!isInstitutionalEmail(result.user.email || '')) {
+        await signOut(auth)
+        setError(`Usa tu correo institucional ${institutionalDomain} para continuar con Google.`)
+        return
+      }
+
       setSuccess('Autenticación con Google exitosa. Validando perfil...')
 
+      // Verificar si el usuario ya tiene perfil en el backend
       try {
         await getMyProfile(result.user)
         navigate('/dashboard', { replace: true })
       } catch (profileErr) {
         if (profileErr.status === 404) {
+          // Usuario nuevo con Google → necesita elegir username
           navigate('/complete-profile', { replace: true })
-        } else {
-          throw profileErr
         }
+        // Si hay otro error (backend caído) el AuthContext igual redirige
       }
     } catch (err) {
       if (err.code !== 'auth/popup-closed-by-user') {
-        setError(getApiErrorMessage(err) || 'Error al iniciar con Google. Intenta de nuevo.')
+        setError('Error al iniciar con Google. Intenta de nuevo.')
       }
     } finally {
       setLoading(false)
@@ -223,22 +212,21 @@ function LoginCard() {
               </small>
             </div>
 
-            <fieldset className="avatar-fieldset">
+
+            <fieldset className="register-avatar-fieldset">
               <legend>Avatar</legend>
-              <div className="avatar-options" role="radiogroup" aria-label="Seleccionar avatar">
-                {avatarOptions.map((avatar) => (
-                  <label
-                    key={avatar.id}
-                    className={`avatar-option ${selectedAvatar === avatar.url ? 'avatar-option--active' : ''}`}
-                  >
+              <div className="register-avatar-options">
+                {avatarOptions.map((option) => (
+                  <label key={option.id} className={`register-avatar-option ${option.value}`}>
                     <input
                       type="radio"
-                      name="avatar"
-                      value={avatar.url}
-                      checked={selectedAvatar === avatar.url}
-                      onChange={() => setSelectedAvatar(avatar.url)}
+                      name="register-avatar"
+                      value={option.value}
+                      checked={avatar === option.value}
+                      onChange={(event) => setAvatar(event.target.value)}
                     />
-                    <img src={buildAvatarUrl(avatar.url, username, displayName)} alt={avatar.label} />
+                    <span aria-hidden="true">{(displayName || 'S').charAt(0).toUpperCase()}</span>
+                    {option.label}
                   </label>
                 ))}
               </div>

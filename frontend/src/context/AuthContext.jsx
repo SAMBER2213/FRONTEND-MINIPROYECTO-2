@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../config/firebase'
-import { getMyProfile, saveProfile } from '../services/api'
+import { getMyProfile, saveProfile, updateMyProfile } from '../services/api'
 import { AuthContext } from './authContextCore'
 
 
@@ -60,6 +60,20 @@ export function AuthProvider({ children }) {
     return response.data
   }, [])
 
+  const updateProfileData = useCallback(async (profileData) => {
+    if (!auth.currentUser) {
+      throw new Error('Debes iniciar sesión para actualizar tu perfil')
+    }
+
+    const response = await updateMyProfile(auth.currentUser, profileData)
+    const updatedProfile = {
+      ...(profile || {}),
+      ...(response.data || {}),
+    }
+    setProfile(updatedProfile)
+    return updatedProfile
+  }, [profile])
+
   const refreshProfile = useCallback(() => loadProfile(auth.currentUser), [loadProfile])
 
   const value = useMemo(() => ({
@@ -71,6 +85,7 @@ export function AuthProvider({ children }) {
     profileError,
     needsProfile: Boolean(user && !profile && !profileLoading),
     completeProfile,
+    updateProfileData,
     refreshProfile,
   }), [
     user,
@@ -79,6 +94,7 @@ export function AuthProvider({ children }) {
     profileLoading,
     profileError,
     completeProfile,
+    updateProfileData,
     refreshProfile,
   ])
 

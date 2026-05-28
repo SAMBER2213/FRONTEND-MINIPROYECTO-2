@@ -184,50 +184,53 @@
   transform: none;
 }
 
-.avatar-fieldset {
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 12px;
+.register-avatar-fieldset {
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 14px;
+  padding: 14px;
 }
 
-.avatar-fieldset legend {
-  color: #333;
-  font-size: 14px;
-  font-weight: 600;
-  padding: 0 6px;
+.register-avatar-fieldset legend {
+  color: #e2e8f0;
+  font-weight: 700;
+  padding: 0 8px;
 }
 
-.avatar-options {
+.register-avatar-options {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 8px;
 }
 
-.avatar-option {
-  border: 2px solid transparent;
-  border-radius: 12px;
-  cursor: pointer;
+.register-avatar-option {
   display: flex;
-  justify-content: center;
-  padding: 6px;
-  transition: border-color 0.2s, background 0.2s;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
-.avatar-option input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+.register-avatar-option:has(input:checked) {
+  border-color: #93c5fd;
+  background: rgba(147, 197, 253, 0.16);
 }
 
-.avatar-option img {
+.register-avatar-option span {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  height: 44px;
-  width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 900;
 }
 
-.avatar-option--active,
-.avatar-option:focus-within {
-  background: #f7f7ff;
-  border-color: #667eea;
+.register-avatar-option input {
+  accent-color: #60a5fa;
 }

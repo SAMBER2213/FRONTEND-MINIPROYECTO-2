@@ -1,54 +1,33 @@
 import { useState } from 'react'
-import { signOut } from 'firebase/auth'
-import { auth } from '../config/firebase'
-import { useAuth } from '../context/useAuth'
+import AppLayout from '../layouts/AppLayout'
 import '../styles/Dashboard.css'
 
 function Dashboard() {
-  const { user, profile } = useAuth()
-  const [error, setError] = useState('')
-
-  const handleLogout = async () => {
-    setError('')
-    try {
-      await signOut(auth)
-    } catch {
-      setError('No se pudo cerrar sesión. Intenta de nuevo.')
-    }
-  }
+  const [message, setMessage] = useState('')
 
   return (
-    <main className="dashboard-page">
-      <header className="dashboard-header">
-        <div className="dashboard-brand">
-          <div className="dashboard-avatar" aria-hidden="true">
-            {profile?.photoURL ? (
-              <img src={profile.photoURL} alt="" />
-            ) : (
-              (profile?.displayName || user?.email || 'S').charAt(0).toUpperCase()
-            )}
-          </div>
-          <div>
-            <p className="dashboard-kicker">StudySync</p>
-            <h1>Dashboard</h1>
-          </div>
-        </div>
-
-        <button onClick={handleLogout} className="dashboard-logout" type="button">
-          Cerrar sesión
-        </button>
-      </header>
-
-      <section className="dashboard-empty" aria-labelledby="dashboard-title">
-        <h2 id="dashboard-title">Bienvenido, {profile?.displayName || user?.email}</h2>
+    <AppLayout
+      title="Dashboard"
+      subtitle="Panel principal del usuario autenticado."
+    >
+      <section className="dashboard-panel" aria-labelledby="dashboard-title">
+        <h2 id="dashboard-title">Bienvenido a StudySync</h2>
         <p>
-          Esta pantalla queda preparada como dashboard protegido para continuar con las
-          funcionalidades del Sprint 2: perfil, creación de salas y visualización de salas propias.
+          Esta es una vista temporal del dashboard mientras se construyen las funciones de salas.
+          Desde el menú lateral puedes entrar a tu perfil y editar tus datos.
         </p>
-        {profile?.username && <p className="dashboard-username">@{profile.username}</p>}
-        {error && <p className="error-msg" role="alert">{error}</p>}
+
+        {message && <p className="success-msg" role="status">{message}</p>}
+
+        <button
+          onClick={() => setMessage('Sesión activa y dashboard protegido funcionando correctamente.')}
+          className="secondary-btn"
+          type="button"
+        >
+          Probar mensaje de éxito
+        </button>
       </section>
-    </main>
+    </AppLayout>
   )
 }
 
