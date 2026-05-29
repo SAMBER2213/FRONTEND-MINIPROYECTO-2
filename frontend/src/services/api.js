@@ -92,3 +92,14 @@ export function getApiErrorMessage(error) {
   if (error?.status === 403) return error.message || 'No tienes permiso para realizar esta acción.'
   return error?.message || 'Ocurrió un error inesperado.'
 }
+
+export async function updateRoom(firebaseUser, roomId, roomData) {
+  return request(`/api/rooms/${roomId}`, firebaseUser, {
+    method: 'PUT',
+    body: JSON.stringify(roomData),
+  })
+}
+
+export async function getRoomByCode(firebaseUser, roomCode) {
+  return request(`/api/rooms/join/${encodeURIComponent(roomCode.toUpperCase().trim())}`, firebaseUser)
+}

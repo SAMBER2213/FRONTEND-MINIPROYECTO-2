@@ -1,11 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
-import Login from "./pages/Login";
-
-const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <Login />,
-  },
-]);
-
-export default router;
+// Las rutas están definidas en App.jsx usando BrowserRouter + Routes.
+// Este archivo se mantiene por compatibilidad pero no es el router activo.
+// El router activo es App.jsx → AppRoutes()
+export default null

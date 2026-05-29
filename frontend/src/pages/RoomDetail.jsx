@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage, getRoomById, getRoomMessages } from '../services/api'
-import { createRealtimeClient } from '../services/realtime'
+import { createRealtimeClient, joinRoom } from '../services/realtime'
 import '../styles/Rooms.css'
 
 function formatDate(value) {
@@ -74,7 +74,7 @@ function RoomDetail() {
         socket.on('connect', async () => {
           if (!user) return
           const token = await user.getIdToken()
-          socket.emit('join_room', { roomId, token })
+          joinRoom(socket, roomId, token, room?.roomCode)
         })
 
         socket.on('room_joined', (payload) => {
