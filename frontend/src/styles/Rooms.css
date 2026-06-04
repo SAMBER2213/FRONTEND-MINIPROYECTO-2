@@ -628,7 +628,7 @@
 
 .room-summary-panel,
 .chat-panel {
-  min-height: calc(100vh - 150px);
+  min-height: auto;
 }
 
 .room-summary-panel {
@@ -644,7 +644,7 @@
   top: 24px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .chat-header-row {
@@ -663,17 +663,19 @@
 
 .chat-messages-shell {
   position: relative;
-  flex: 1;
-  min-height: 360px;
-  display: flex;
+  flex: 0 0 auto;
+  min-height: 0;
+  display: block;
 }
 
 .chat-messages {
   width: 100%;
-  min-height: 360px;
-  max-height: none;
+  height: 430px;
+  min-height: 0;
+  max-height: 430px;
   margin: 18px 0;
   padding: 18px;
+  overflow-y: auto;
   scroll-behavior: smooth;
 }
 
@@ -759,9 +761,9 @@
 }
 
 @media (max-width: 640px) {
-  .chat-messages-shell,
   .chat-messages {
-    min-height: 320px;
+    height: 340px;
+    max-height: 340px;
   }
 
   .scroll-bottom-btn {
