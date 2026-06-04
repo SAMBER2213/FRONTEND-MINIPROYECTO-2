@@ -75,6 +75,8 @@ function RoomDetail() {
   const [hasJoinedRoom, setHasJoinedRoom] = useState(false)
   const [socketState, setSocketState] = useState('Conectando...')
   const [chatStatus, setChatStatus] = useState('')
+  const [historyStatus, setHistoryStatus] = useState('')
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
@@ -128,21 +130,41 @@ function RoomDetail() {
       setError('')
       setCopied('')
       setChatStatus('')
+      setHistoryStatus('')
       setHasJoinedRoom(false)
 
       try {
-        const [roomResponse, messagesResponse] = await Promise.all([
-          getRoomById(user, roomId),
-          getRoomMessages(user, roomId).catch(() => ({ data: [] })),
-        ])
+        const roomResponse = await getRoomById(user, roomId)
         if (!isMounted) return
 
-        setRoom(roomResponse.data)
-        if (roomResponse.data?.roomCode) storeRoomCode(roomId, roomResponse.data.roomCode)
+        const roomData = roomResponse.data
+        const roomCodeForJoin = navigationRoomCode || getStoredRoomCode(roomId) || roomData?.roomCode || ''
+
+        setRoom(roomData)
+        if (roomData?.roomCode) storeRoomCode(roomId, roomData.roomCode)
         shouldStickToBottomRef.current = true
-        setMessages(messagesResponse.data || [])
+        setMessages([])
         setParticipants([])
         setSocketState('Conectando al servidor en tiempo real...')
+
+        setHistoryLoading(true)
+        try {
+          const messagesResponse = await getRoomMessages(user, roomId, { limit: 75, roomCode: roomCodeForJoin })
+          if (!isMounted) return
+          const restoredMessages = messagesResponse.data || []
+          setMessages(restoredMessages)
+          setHistoryStatus(
+            restoredMessages.length > 0
+              ? `Historial Firestore cargado: ${restoredMessages.length} mensaje${restoredMessages.length === 1 ? '' : 's'} recuperado${restoredMessages.length === 1 ? '' : 's'}.`
+              : 'Historial Firestore cargado: no hay mensajes guardados todavia.'
+          )
+        } catch (historyError) {
+          if (!isMounted) return
+          setMessages([])
+          setHistoryStatus(`No se pudo cargar el historial desde Firestore: ${getApiErrorMessage(historyError)}`)
+        } finally {
+          if (isMounted) setHistoryLoading(false)
+        }
 
         socket = createRealtimeClient()
         socketRef.current = socket
@@ -151,7 +173,6 @@ function RoomDetail() {
           if (!user || !isMounted) return
           setSocketState('Validando acceso a la sala...')
           const token = await user.getIdToken()
-          const roomCodeForJoin = navigationRoomCode || getStoredRoomCode(roomId) || roomResponse.data?.roomCode || ''
           joinRoom(socket, roomId, token, roomCodeForJoin)
         }
 
@@ -209,18 +230,22 @@ function RoomDetail() {
           setSending(false)
           shouldStickToBottomRef.current = true
           setChatStatus('Mensaje recibido en tiempo real.')
+          setHistoryStatus('Nuevo mensaje guardado en Firestore y mostrado en la sala.')
         })
 
         socket.on('message_saved', () => {
           if (!isMounted) return
           setSending(false)
           setChatStatus('Mensaje enviado y guardado.')
+          setHistoryStatus('Persistencia confirmada en Firestore.')
         })
 
         socket.on('message_failed', (payload) => {
           if (!isMounted) return
           setSending(false)
-          setError(payload?.message || 'El mensaje se entregó, pero no se pudo guardar en Firestore.')
+          const message = payload?.message || 'No se pudo guardar el mensaje en Firestore.'
+          setError(message)
+          setHistoryStatus(message)
         })
 
         socket.on('chat_error', (payload) => {
@@ -409,7 +434,7 @@ function RoomDetail() {
           <div className="chat-header-row">
             <div>
               <h2 id="chat-title">Chat de la sala</h2>
-              <p>Mensajería instantánea por WebSockets con desplazamiento automático al último mensaje.</p>
+              <p>Mensajería instantánea por WebSockets con historial persistente en Firestore.</p>
             </div>
             <span className={`chat-live-badge ${hasJoinedRoom ? 'online' : ''}`}>
               {hasJoinedRoom ? 'En línea' : 'Conectando'}
@@ -417,6 +442,8 @@ function RoomDetail() {
           </div>
 
           {chatStatus && <p className="chat-status" role="status">{chatStatus}</p>}
+          {historyLoading && <p className="chat-history-status" role="status">Cargando historial desde Firestore...</p>}
+          {historyStatus && <p className="chat-history-status" role="status">{historyStatus}</p>}
 
           <div className="chat-messages-shell">
             <div
@@ -429,8 +456,8 @@ function RoomDetail() {
             >
               {messages.length === 0 ? (
                 <div className="chat-empty-state">
-                  <strong>Aún no hay mensajes</strong>
-                  <span>Escribe el primero para probar el chat en tiempo real.</span>
+                  <strong>Aún no hay mensajes guardados</strong>
+                  <span>El historial de Firestore se mostrara aqui al entrar o recargar.</span>
                 </div>
               ) : (
                 messages.map((message) => {
@@ -440,6 +467,7 @@ function RoomDetail() {
                       <div className="chat-message-header">
                         <strong>{isMine ? 'Tú' : message.senderName}</strong>
                         <span>{formatTime(message.createdAt) || 'Ahora'}</span>
+                        {message.persistedAt && <em className="message-storage-badge">DB</em>}
                       </div>
                       <p>{message.text}</p>
                     </article>

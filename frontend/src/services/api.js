@@ -80,8 +80,13 @@ export async function deleteRoom(firebaseUser, roomId) {
   })
 }
 
-export async function getRoomMessages(firebaseUser, roomId, limit = 50) {
-  return request(`/api/rooms/${roomId}/messages?limit=${limit}`, firebaseUser)
+export async function getRoomMessages(firebaseUser, roomId, options = {}) {
+  const config = typeof options === 'number' ? { limit: options } : options
+  const params = new URLSearchParams()
+  params.set('limit', String(config.limit ?? 50))
+  if (config.roomCode) params.set('roomCode', config.roomCode)
+
+  return request(`/api/rooms/${roomId}/messages?${params.toString()}`, firebaseUser)
 }
 
 export function getApiErrorMessage(error) {
