@@ -100,6 +100,7 @@ export async function updateRoom(firebaseUser, roomId, roomData) {
   })
 }
 
-export async function getRoomByCode(firebaseUser, roomCode) {
-  return request(`/api/rooms/join/${encodeURIComponent(roomCode.toUpperCase().trim())}`, firebaseUser)
+export async function getRoomByCode(firebaseUser, roomKey) {
+  const cleanRoomKey = encodeURIComponent(roomKey.trim())
+  return request(`/api/rooms/join/${cleanRoomKey}`, firebaseUser)
 }

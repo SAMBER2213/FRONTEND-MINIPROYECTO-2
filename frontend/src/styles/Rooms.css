@@ -536,3 +536,43 @@
     flex-direction: column;
   }
 }
+
+.rooms-management-grid {
+  align-items: start;
+}
+
+.join-room-panel {
+  position: sticky;
+  top: 24px;
+}
+
+.join-room-form {
+  margin-bottom: 18px;
+}
+
+.form-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.edit-room-form {
+  margin: 16px 0 0;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: #f8fbff;
+}
+
+.host-only-note {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .join-room-panel {
+    position: static;
+  }
+}

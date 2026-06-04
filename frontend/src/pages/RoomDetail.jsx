@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage, getRoomById, getRoomMessages } from '../services/api'
@@ -32,10 +32,21 @@ function copyText(value) {
   return Promise.resolve()
 }
 
+function getStoredRoomCode(roomId) {
+  return window.sessionStorage.getItem(`studysync:roomCode:${roomId}`) || ''
+}
+
+function storeRoomCode(roomId, roomCode) {
+  if (roomId && roomCode) {
+    window.sessionStorage.setItem(`studysync:roomCode:${roomId}`, roomCode)
+  }
+}
+
 function RoomDetail() {
   const { roomId } = useParams()
   const { user, profile } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const socketRef = useRef(null)
   const [room, setRoom] = useState(null)
   const [participants, setParticipants] = useState([])
@@ -46,6 +57,7 @@ function RoomDetail() {
   const [socketState, setSocketState] = useState('Conectando...')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
+  const navigationRoomCode = typeof location.state?.roomCode === 'string' ? location.state.roomCode : ''
 
   useEffect(() => {
     let isMounted = true
@@ -64,6 +76,7 @@ function RoomDetail() {
         if (!isMounted) return
 
         setRoom(roomResponse.data)
+        if (roomResponse.data?.roomCode) storeRoomCode(roomId, roomResponse.data.roomCode)
         setMessages(messagesResponse.data || [])
         setParticipants([])
         setSocketState('Conectando al servidor en tiempo real...')
@@ -74,7 +87,8 @@ function RoomDetail() {
         socket.on('connect', async () => {
           if (!user) return
           const token = await user.getIdToken()
-          joinRoom(socket, roomId, token, room?.roomCode)
+          const roomCodeForJoin = navigationRoomCode || getStoredRoomCode(roomId) || roomResponse.data?.roomCode || ''
+          joinRoom(socket, roomId, token, roomCodeForJoin)
         })
 
         socket.on('room_joined', (payload) => {
@@ -143,12 +157,15 @@ function RoomDetail() {
       }
       socketRef.current = null
     }
-  }, [user, roomId])
+  }, [user, roomId, navigationRoomCode])
 
   const participantTotal = useMemo(() => {
     if (participants.length > 0) return participants.length
     return room?.participantCount ?? 0
   }, [participants, room])
+
+  const isCurrentUserHost = room?.hostUid === user?.uid || room?.isHost
+  const visibleRoomCode = room?.roomCode || navigationRoomCode || getStoredRoomCode(roomId)
 
   const handleCopy = async (value, label) => {
     try {
@@ -210,10 +227,14 @@ function RoomDetail() {
 
                 <article className="room-info-card">
                   <span className="room-info-label">ID único</span>
-                  <strong>{room.roomCode || room.id}</strong>
-                  <button className="link-btn" type="button" onClick={() => handleCopy(room.roomCode || room.id, 'ID único')}>
-                    Copiar ID
-                  </button>
+                  <strong>{visibleRoomCode || room.id}</strong>
+                  {visibleRoomCode ? (
+                    <button className="link-btn" type="button" onClick={() => handleCopy(visibleRoomCode, 'ID único')}>
+                      Copiar ID
+                    </button>
+                  ) : (
+                    <p>El código está oculto. Pídeselo al anfitrión para entrar como invitado.</p>
+                  )}
                 </article>
 
                 <article className="room-info-card">
@@ -226,6 +247,7 @@ function RoomDetail() {
                   <span className="room-info-label">Creada</span>
                   <strong>{formatDate(room.createdAt)}</strong>
                   <p>Anfitrión: {room.hostName || profile?.displayName || user?.displayName || 'Usuario'}</p>
+                  <p>{isCurrentUserHost ? 'Tienes permisos de anfitrión.' : 'Entraste como invitado.'}</p>
                 </article>
               </div>
 
@@ -254,7 +276,7 @@ function RoomDetail() {
                       </div>
                       <div>
                         <h3>{participant.displayName}</h3>
-                        <p>{participant.uid === user?.uid ? 'Tú / anfitrión' : 'Participante conectado'}</p>
+                        <p>{participant.uid === user?.uid ? (isCurrentUserHost ? 'Tú / anfitrión' : 'Tú / invitado') : 'Participante conectado'}</p>
                       </div>
                     </article>
                   )
