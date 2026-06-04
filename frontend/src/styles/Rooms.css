@@ -619,3 +619,153 @@
     flex-direction: column;
   }
 }
+
+/* C4 - Diseño UI Sala + auto-scroll operativo */
+.room-detail-grid {
+  grid-template-columns: minmax(320px, 430px) minmax(420px, 1fr);
+  align-items: stretch;
+}
+
+.room-summary-panel,
+.chat-panel {
+  min-height: calc(100vh - 150px);
+}
+
+.room-summary-panel {
+  align-self: start;
+}
+
+.room-summary-panel .rooms-panel-header {
+  align-items: flex-start;
+}
+
+.chat-panel {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-header-row {
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.chat-live-badge::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.chat-messages-shell {
+  position: relative;
+  flex: 1;
+  min-height: 360px;
+  display: flex;
+}
+
+.chat-messages {
+  width: 100%;
+  min-height: 360px;
+  max-height: none;
+  margin: 18px 0;
+  padding: 18px;
+  scroll-behavior: smooth;
+}
+
+.chat-empty-state {
+  min-height: 220px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 18px;
+  background: #fff;
+  color: #64748b;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 28px;
+}
+
+.chat-empty-state strong {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.chat-message {
+  line-height: 1.45;
+}
+
+.chat-message p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-bottom-anchor {
+  width: 100%;
+  height: 1px;
+  flex: 0 0 1px;
+}
+
+.scroll-bottom-btn {
+  position: absolute;
+  left: 50%;
+  bottom: 32px;
+  transform: translateX(-50%);
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: #fff;
+  color: #1d4ed8;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 12px 25px rgba(15, 23, 42, 0.12);
+}
+
+.scroll-bottom-btn:hover,
+.scroll-bottom-btn:focus-visible {
+  background: #eff6ff;
+  outline: 3px solid rgba(37, 99, 235, 0.16);
+}
+
+.chat-form {
+  padding-top: 4px;
+}
+
+.chat-form input:disabled,
+.chat-form button:disabled {
+  opacity: 0.72;
+}
+
+@media (max-width: 1100px) {
+  .room-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-panel {
+    position: static;
+  }
+
+  .room-summary-panel,
+  .chat-panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .chat-messages-shell,
+  .chat-messages {
+    min-height: 320px;
+  }
+
+  .scroll-bottom-btn {
+    width: calc(100% - 40px);
+    bottom: 26px;
+  }
+}

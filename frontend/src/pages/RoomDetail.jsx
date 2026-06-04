@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../context/useAuth'
@@ -63,6 +63,9 @@ function RoomDetail() {
   const location = useLocation()
   const socketRef = useRef(null)
   const chatMessagesRef = useRef(null)
+  const chatBottomRef = useRef(null)
+  const chatScrollFrameRef = useRef(null)
+  const shouldStickToBottomRef = useRef(true)
   const [room, setRoom] = useState(null)
   const [participants, setParticipants] = useState([])
   const [messages, setMessages] = useState([])
@@ -72,14 +75,49 @@ function RoomDetail() {
   const [hasJoinedRoom, setHasJoinedRoom] = useState(false)
   const [socketState, setSocketState] = useState('Conectando...')
   const [chatStatus, setChatStatus] = useState('')
+  const [showScrollButton, setShowScrollButton] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
   const navigationRoomCode = typeof location.state?.roomCode === 'string' ? location.state.roomCode : ''
 
+  const scrollChatToBottom = useCallback((behavior = 'smooth') => {
+    if (chatScrollFrameRef.current) {
+      window.cancelAnimationFrame(chatScrollFrameRef.current)
+    }
+
+    chatScrollFrameRef.current = window.requestAnimationFrame(() => {
+      const container = chatMessagesRef.current
+      if (!container) {
+        chatScrollFrameRef.current = null
+        return
+      }
+
+      container.scrollTo({ top: container.scrollHeight, behavior })
+      chatBottomRef.current?.scrollIntoView({ behavior, block: 'end' })
+      shouldStickToBottomRef.current = true
+      setShowScrollButton(false)
+      chatScrollFrameRef.current = null
+    })
+  }, [])
+
+  useEffect(() => () => {
+    if (chatScrollFrameRef.current) {
+      window.cancelAnimationFrame(chatScrollFrameRef.current)
+    }
+  }, [])
+
   useEffect(() => {
-    if (!chatMessagesRef.current) return
-    chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
-  }, [messages])
+    if (messages.length === 0) {
+      setShowScrollButton(false)
+      return
+    }
+
+    if (shouldStickToBottomRef.current) {
+      scrollChatToBottom(messages.length === 1 ? 'auto' : 'smooth')
+    } else {
+      setShowScrollButton(true)
+    }
+  }, [messages, scrollChatToBottom])
 
   useEffect(() => {
     let isMounted = true
@@ -101,6 +139,7 @@ function RoomDetail() {
 
         setRoom(roomResponse.data)
         if (roomResponse.data?.roomCode) storeRoomCode(roomId, roomResponse.data.roomCode)
+        shouldStickToBottomRef.current = true
         setMessages(messagesResponse.data || [])
         setParticipants([])
         setSocketState('Conectando al servidor en tiempo real...')
@@ -168,6 +207,7 @@ function RoomDetail() {
           if (!isMounted) return
           setMessages((current) => appendUniqueMessage(current, message))
           setSending(false)
+          shouldStickToBottomRef.current = true
           setChatStatus('Mensaje recibido en tiempo real.')
         })
 
@@ -243,6 +283,16 @@ function RoomDetail() {
     }
   }
 
+  const handleChatScroll = () => {
+    const container = chatMessagesRef.current
+    if (!container) return
+
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    const isNearBottom = distanceFromBottom < 96
+    shouldStickToBottomRef.current = isNearBottom
+    setShowScrollButton(!isNearBottom && messages.length > 0)
+  }
+
   const handleSendMessage = (event) => {
     event.preventDefault()
     setError('')
@@ -259,6 +309,7 @@ function RoomDetail() {
     }
 
     const clientMessageId = `client-${user.uid}-${Date.now()}`
+    shouldStickToBottomRef.current = true
     setSending(true)
     setChatStatus('Enviando mensaje por WebSocket...')
     socketRef.current.emit('send_message', { roomId, text: cleanText, clientMessageId })
@@ -271,7 +322,7 @@ function RoomDetail() {
       subtitle="Sala con ID único, participantes conectados y chat sencillo en tiempo real."
     >
       <div className="room-detail-grid">
-        <section className="rooms-panel" aria-labelledby="room-overview-title">
+        <section className="rooms-panel room-summary-panel" aria-labelledby="room-overview-title">
           <div className="rooms-panel-header">
             <div>
               <h2 id="room-overview-title">Información general</h2>
@@ -358,7 +409,7 @@ function RoomDetail() {
           <div className="chat-header-row">
             <div>
               <h2 id="chat-title">Chat de la sala</h2>
-              <p>Mensajería instantánea por WebSockets para todos los usuarios de la misma sala.</p>
+              <p>Mensajería instantánea por WebSockets con desplazamiento automático al último mensaje.</p>
             </div>
             <span className={`chat-live-badge ${hasJoinedRoom ? 'online' : ''}`}>
               {hasJoinedRoom ? 'En línea' : 'Conectando'}
@@ -367,22 +418,41 @@ function RoomDetail() {
 
           {chatStatus && <p className="chat-status" role="status">{chatStatus}</p>}
 
-          <div className="chat-messages" ref={chatMessagesRef} aria-live="polite" aria-label="Mensajes del chat de la sala">
-            {messages.length === 0 ? (
-              <div className="rooms-empty-state">Aún no hay mensajes. Escribe el primero.</div>
-            ) : (
-              messages.map((message) => {
-                const isMine = message.senderUid === user?.uid
-                return (
-                  <article key={message.id || message.clientMessageId || `${message.senderUid}-${message.createdAt}`} className={`chat-message ${isMine ? 'mine' : ''}`}>
-                    <div className="chat-message-header">
-                      <strong>{isMine ? 'Tú' : message.senderName}</strong>
-                      <span>{formatTime(message.createdAt)}</span>
-                    </div>
-                    <p>{message.text}</p>
-                  </article>
-                )
-              })
+          <div className="chat-messages-shell">
+            <div
+              className="chat-messages"
+              ref={chatMessagesRef}
+              onScroll={handleChatScroll}
+              aria-live="polite"
+              aria-relevant="additions text"
+              aria-label="Mensajes del chat de la sala"
+            >
+              {messages.length === 0 ? (
+                <div className="chat-empty-state">
+                  <strong>Aún no hay mensajes</strong>
+                  <span>Escribe el primero para probar el chat en tiempo real.</span>
+                </div>
+              ) : (
+                messages.map((message) => {
+                  const isMine = message.senderUid === user?.uid
+                  return (
+                    <article key={message.id || message.clientMessageId || `${message.senderUid}-${message.createdAt}`} className={`chat-message ${isMine ? 'mine' : ''}`}>
+                      <div className="chat-message-header">
+                        <strong>{isMine ? 'Tú' : message.senderName}</strong>
+                        <span>{formatTime(message.createdAt) || 'Ahora'}</span>
+                      </div>
+                      <p>{message.text}</p>
+                    </article>
+                  )
+                })
+              )}
+              <div ref={chatBottomRef} className="chat-bottom-anchor" aria-hidden="true" />
+            </div>
+
+            {showScrollButton && (
+              <button className="scroll-bottom-btn" type="button" onClick={() => scrollChatToBottom()}>
+                Bajar al último mensaje
+              </button>
             )}
           </div>
 
