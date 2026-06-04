@@ -42,22 +42,44 @@ function storeRoomCode(roomId, roomCode) {
   }
 }
 
+function appendUniqueMessage(currentMessages, incomingMessage) {
+  if (!incomingMessage) return currentMessages
+  const incomingId = incomingMessage.id || incomingMessage.clientMessageId
+
+  if (incomingId) {
+    const exists = currentMessages.some((message) => (
+      message.id === incomingId || message.clientMessageId === incomingId
+    ))
+    if (exists) return currentMessages
+  }
+
+  return [...currentMessages, incomingMessage]
+}
+
 function RoomDetail() {
   const { roomId } = useParams()
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const socketRef = useRef(null)
+  const chatMessagesRef = useRef(null)
   const [room, setRoom] = useState(null)
   const [participants, setParticipants] = useState([])
   const [messages, setMessages] = useState([])
   const [messageText, setMessageText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [hasJoinedRoom, setHasJoinedRoom] = useState(false)
   const [socketState, setSocketState] = useState('Conectando...')
+  const [chatStatus, setChatStatus] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
   const navigationRoomCode = typeof location.state?.roomCode === 'string' ? location.state.roomCode : ''
+
+  useEffect(() => {
+    if (!chatMessagesRef.current) return
+    chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight
+  }, [messages])
 
   useEffect(() => {
     let isMounted = true
@@ -67,6 +89,8 @@ function RoomDetail() {
       setLoading(true)
       setError('')
       setCopied('')
+      setChatStatus('')
+      setHasJoinedRoom(false)
 
       try {
         const [roomResponse, messagesResponse] = await Promise.all([
@@ -84,11 +108,27 @@ function RoomDetail() {
         socket = createRealtimeClient()
         socketRef.current = socket
 
-        socket.on('connect', async () => {
-          if (!user) return
+        const emitJoinRoom = async () => {
+          if (!user || !isMounted) return
+          setSocketState('Validando acceso a la sala...')
           const token = await user.getIdToken()
           const roomCodeForJoin = navigationRoomCode || getStoredRoomCode(roomId) || roomResponse.data?.roomCode || ''
           joinRoom(socket, roomId, token, roomCodeForJoin)
+        }
+
+        socket.on('connect', emitJoinRoom)
+
+        socket.on('connect_error', () => {
+          if (!isMounted) return
+          setHasJoinedRoom(false)
+          setSocketState('No se pudo conectar al servidor de tiempo real.')
+          setError('No se pudo conectar con WebSockets. Verifica que el backend realtime esté activo en Render.')
+        })
+
+        socket.on('reconnect_attempt', () => {
+          if (!isMounted) return
+          setHasJoinedRoom(false)
+          setSocketState('Reconectando al chat...')
         })
 
         socket.on('room_joined', (payload) => {
@@ -98,7 +138,9 @@ function RoomDetail() {
             ...current,
             participantCount: (payload.participants || []).length,
           }) : current)
+          setHasJoinedRoom(true)
           setSocketState('Conectado por WebSockets.')
+          setChatStatus('Chat listo. Los mensajes se entregan al instante a todos en esta sala.')
         })
 
         socket.on('participant_joined', (payload) => {
@@ -124,19 +166,43 @@ function RoomDetail() {
 
         socket.on('new_message', (message) => {
           if (!isMounted) return
-          setMessages((current) => [...current, message])
+          setMessages((current) => appendUniqueMessage(current, message))
+          setSending(false)
+          setChatStatus('Mensaje recibido en tiempo real.')
+        })
+
+        socket.on('message_saved', () => {
+          if (!isMounted) return
+          setSending(false)
+          setChatStatus('Mensaje enviado y guardado.')
+        })
+
+        socket.on('message_failed', (payload) => {
+          if (!isMounted) return
+          setSending(false)
+          setError(payload?.message || 'El mensaje se entregó, pero no se pudo guardar en Firestore.')
+        })
+
+        socket.on('chat_error', (payload) => {
+          if (!isMounted) return
+          setError(payload?.message || 'No se pudo enviar el mensaje.')
+          setSending(false)
         })
 
         socket.on('disconnect', () => {
           if (!isMounted) return
+          setHasJoinedRoom(false)
           setSocketState('Desconectado del servidor en tiempo real.')
         })
 
         socket.on('error', (payload) => {
           if (!isMounted) return
+          setHasJoinedRoom(false)
           setError(payload?.message || 'Ocurrió un error en la conexión de tiempo real.')
           setSending(false)
         })
+
+        socket.connect()
       } catch (err) {
         if (!isMounted) return
         setError(getApiErrorMessage(err))
@@ -166,6 +232,7 @@ function RoomDetail() {
 
   const isCurrentUserHost = room?.hostUid === user?.uid || room?.isHost
   const visibleRoomCode = room?.roomCode || navigationRoomCode || getStoredRoomCode(roomId)
+  const canSendMessage = hasJoinedRoom && !sending && Boolean(messageText.trim())
 
   const handleCopy = async (value, label) => {
     try {
@@ -186,15 +253,16 @@ function RoomDetail() {
       return
     }
 
-    if (!socketRef.current?.connected) {
-      setError('No hay conexión activa con WebSockets. Revisa el servidor de tiempo real.')
+    if (!socketRef.current?.connected || !hasJoinedRoom) {
+      setError('Aún no estás conectado a la sala por WebSockets.')
       return
     }
 
+    const clientMessageId = `client-${user.uid}-${Date.now()}`
     setSending(true)
-    socketRef.current.emit('send_message', { roomId, text: cleanText })
+    setChatStatus('Enviando mensaje por WebSocket...')
+    socketRef.current.emit('send_message', { roomId, text: cleanText, clientMessageId })
     setMessageText('')
-    setSending(false)
   }
 
   return (
@@ -287,17 +355,26 @@ function RoomDetail() {
         </section>
 
         <section className="rooms-panel chat-panel" aria-labelledby="chat-title">
-          <h2 id="chat-title">Chat de la sala</h2>
-          <p>Chat sencillo usando WebSockets y guardado en Firestore.</p>
+          <div className="chat-header-row">
+            <div>
+              <h2 id="chat-title">Chat de la sala</h2>
+              <p>Mensajería instantánea por WebSockets para todos los usuarios de la misma sala.</p>
+            </div>
+            <span className={`chat-live-badge ${hasJoinedRoom ? 'online' : ''}`}>
+              {hasJoinedRoom ? 'En línea' : 'Conectando'}
+            </span>
+          </div>
 
-          <div className="chat-messages" aria-live="polite">
+          {chatStatus && <p className="chat-status" role="status">{chatStatus}</p>}
+
+          <div className="chat-messages" ref={chatMessagesRef} aria-live="polite" aria-label="Mensajes del chat de la sala">
             {messages.length === 0 ? (
               <div className="rooms-empty-state">Aún no hay mensajes. Escribe el primero.</div>
             ) : (
               messages.map((message) => {
                 const isMine = message.senderUid === user?.uid
                 return (
-                  <article key={message.id || `${message.senderUid}-${message.createdAt}`} className={`chat-message ${isMine ? 'mine' : ''}`}>
+                  <article key={message.id || message.clientMessageId || `${message.senderUid}-${message.createdAt}`} className={`chat-message ${isMine ? 'mine' : ''}`}>
                     <div className="chat-message-header">
                       <strong>{isMine ? 'Tú' : message.senderName}</strong>
                       <span>{formatTime(message.createdAt)}</span>
@@ -316,11 +393,12 @@ function RoomDetail() {
               type="text"
               value={messageText}
               onChange={(event) => setMessageText(event.target.value)}
-              placeholder="Escribe un mensaje..."
+              placeholder={hasJoinedRoom ? 'Escribe un mensaje...' : 'Conectando al chat...'}
               maxLength="1000"
+              disabled={!hasJoinedRoom}
             />
-            <button className="login-btn" type="submit" disabled={sending || !messageText.trim()}>
-              Enviar
+            <button className="login-btn" type="submit" disabled={!canSendMessage}>
+              {sending ? 'Enviando...' : 'Enviar'}
             </button>
           </form>
         </section>

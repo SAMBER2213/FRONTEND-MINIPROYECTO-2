@@ -2,23 +2,31 @@ import { io } from 'socket.io-client'
 
 const REALTIME_URL = import.meta.env.VITE_REALTIME_API_URL || 'http://localhost:3002'
 
+const SOCKET_OPTIONS = {
+  transports: ['websocket', 'polling'],
+  autoConnect: true,
+  reconnection: true,
+  reconnectionAttempts: 8,
+  reconnectionDelay: 700,
+  timeout: 10000,
+}
+
 let socketInstance = null
 
 export function getRealtimeClient() {
   if (!socketInstance || socketInstance.disconnected) {
-    socketInstance = io(REALTIME_URL, {
-      transports: ['websocket', 'polling'],
-      autoConnect: true,
-    })
+    socketInstance = io(REALTIME_URL, SOCKET_OPTIONS)
   }
   return socketInstance
 }
 
-// Mantener compatibilidad con el código existente en RoomDetail
+// Mantener compatibilidad con el código existente en RoomDetail.
+// forceNew evita que dos pantallas compartan listeners de una sesión anterior.
 export function createRealtimeClient() {
   return io(REALTIME_URL, {
-    transports: ['websocket', 'polling'],
-    autoConnect: true,
+    ...SOCKET_OPTIONS,
+    autoConnect: false,
+    forceNew: true,
   })
 }
 
