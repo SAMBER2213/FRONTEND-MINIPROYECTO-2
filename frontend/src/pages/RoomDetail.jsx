@@ -4,6 +4,8 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage, getRoomById, getRoomMessages } from '../services/api'
 import { createRealtimeClient, joinRoom } from '../services/realtime'
+import { VideoGrid, VideoControls } from '../components/VideoGrid'
+import { useWebRTC } from '../hooks/useWebRTC'
 import '../styles/Rooms.css'
 
 function formatDate(value) {
@@ -66,6 +68,7 @@ function RoomDetail() {
   const chatBottomRef = useRef(null)
   const chatScrollFrameRef = useRef(null)
   const shouldStickToBottomRef = useRef(true)
+
   const [room, setRoom] = useState(null)
   const [participants, setParticipants] = useState([])
   const [messages, setMessages] = useState([])
@@ -80,20 +83,36 @@ function RoomDetail() {
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState('')
+  const [socket, setSocket] = useState(null)
+
   const navigationRoomCode = typeof location.state?.roomCode === 'string' ? location.state.roomCode : ''
 
+  // ─── Sprint 4: WebRTC + PeerJS ────────────────────────────────────
+  const {
+    localStream,
+    remoteStreams,
+    isMuted,
+    isCameraOff,
+    mediaError,
+    peerReady,
+    toggleMute,
+    toggleCamera,
+    callExistingPeers,
+  } = useWebRTC({
+    socket,
+    roomId,
+    myUid: user?.uid,
+    enabled: hasJoinedRoom,
+  })
+
+  // ─── Chat scroll helpers ──────────────────────────────────────────
   const scrollChatToBottom = useCallback((behavior = 'smooth') => {
     if (chatScrollFrameRef.current) {
       window.cancelAnimationFrame(chatScrollFrameRef.current)
     }
-
     chatScrollFrameRef.current = window.requestAnimationFrame(() => {
       const container = chatMessagesRef.current
-      if (!container) {
-        chatScrollFrameRef.current = null
-        return
-      }
-
+      if (!container) { chatScrollFrameRef.current = null; return }
       container.scrollTo({ top: container.scrollHeight, behavior })
       chatBottomRef.current?.scrollIntoView({ behavior, block: 'end' })
       shouldStickToBottomRef.current = true
@@ -103,17 +122,11 @@ function RoomDetail() {
   }, [])
 
   useEffect(() => () => {
-    if (chatScrollFrameRef.current) {
-      window.cancelAnimationFrame(chatScrollFrameRef.current)
-    }
+    if (chatScrollFrameRef.current) window.cancelAnimationFrame(chatScrollFrameRef.current)
   }, [])
 
   useEffect(() => {
-    if (messages.length === 0) {
-      setShowScrollButton(false)
-      return
-    }
-
+    if (messages.length === 0) { setShowScrollButton(false); return }
     if (shouldStickToBottomRef.current) {
       scrollChatToBottom(messages.length === 1 ? 'auto' : 'smooth')
     } else {
@@ -121,9 +134,10 @@ function RoomDetail() {
     }
   }, [messages, scrollChatToBottom])
 
+  // ─── Socket + sala ────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true
-    let socket = null
+    let socketInstance = null
 
     const loadRoom = async () => {
       setLoading(true)
@@ -147,6 +161,7 @@ function RoomDetail() {
         setParticipants([])
         setSocketState('Conectando al servidor en tiempo real...')
 
+        // Cargar historial
         setHistoryLoading(true)
         try {
           const messagesResponse = await getRoomMessages(user, roomId, { limit: 75, roomCode: roomCodeForJoin })
@@ -166,44 +181,48 @@ function RoomDetail() {
           if (isMounted) setHistoryLoading(false)
         }
 
-        socket = createRealtimeClient()
-        socketRef.current = socket
+        socketInstance = createRealtimeClient()
+        socketRef.current = socketInstance
 
         const emitJoinRoom = async () => {
           if (!user || !isMounted) return
           setSocketState('Validando acceso a la sala...')
           const token = await user.getIdToken()
-          joinRoom(socket, roomId, token, roomCodeForJoin)
+          joinRoom(socketInstance, roomId, token, roomCodeForJoin)
         }
 
-        socket.on('connect', emitJoinRoom)
+        socketInstance.on('connect', emitJoinRoom)
 
-        socket.on('connect_error', () => {
+        socketInstance.on('connect_error', () => {
           if (!isMounted) return
           setHasJoinedRoom(false)
           setSocketState('No se pudo conectar al servidor de tiempo real.')
-          setError('No se pudo conectar con WebSockets. Verifica que el backend realtime esté activo en Render.')
+          setError('No se pudo conectar con WebSockets. Verifica que el backend realtime esté activo.')
         })
 
-        socket.on('reconnect_attempt', () => {
+        socketInstance.on('reconnect_attempt', () => {
           if (!isMounted) return
           setHasJoinedRoom(false)
           setSocketState('Reconectando al chat...')
         })
 
-        socket.on('room_joined', (payload) => {
+        socketInstance.on('room_joined', (payload) => {
           if (!isMounted) return
-          setParticipants(payload.participants || [])
+          const participantList = payload.participants || []
+          setParticipants(participantList)
           setRoom((current) => current ? ({
             ...current,
-            participantCount: (payload.participants || []).length,
+            participantCount: participantList.length,
           }) : current)
           setHasJoinedRoom(true)
           setSocketState('Conectado por WebSockets.')
-          setChatStatus('Chat listo. Los mensajes se entregan al instante a todos en esta sala.')
+          setChatStatus('Chat listo.')
+          // Sprint 4: exponer el socket al hook de WebRTC y llamar peers existentes
+          setSocket(socketInstance)
+          // callExistingPeers se llama desde useWebRTC cuando peerReady cambia
         })
 
-        socket.on('participant_joined', (payload) => {
+        socketInstance.on('participant_joined', (payload) => {
           if (!isMounted) return
           setParticipants(payload.participants || [])
           setRoom((current) => current ? ({
@@ -212,62 +231,59 @@ function RoomDetail() {
           }) : current)
         })
 
-        socket.on('participant_left', (payload) => {
+        socketInstance.on('participant_left', (payload) => {
           if (!isMounted) return
           setParticipants((current) => {
-            const updated = current.filter((participant) => participant.uid !== payload.uid)
-            setRoom((previous) => previous ? ({
-              ...previous,
-              participantCount: updated.length,
-            }) : previous)
+            const updated = current.filter((p) => p.uid !== payload.uid)
+            setRoom((prev) => prev ? ({ ...prev, participantCount: updated.length }) : prev)
             return updated
           })
         })
 
-        socket.on('new_message', (message) => {
+        socketInstance.on('new_message', (message) => {
           if (!isMounted) return
           setMessages((current) => appendUniqueMessage(current, message))
           setSending(false)
           shouldStickToBottomRef.current = true
           setChatStatus('Mensaje recibido en tiempo real.')
-          setHistoryStatus('Nuevo mensaje guardado en Firestore y mostrado en la sala.')
+          setHistoryStatus('Nuevo mensaje guardado en Firestore.')
         })
 
-        socket.on('message_saved', () => {
+        socketInstance.on('message_saved', () => {
           if (!isMounted) return
           setSending(false)
           setChatStatus('Mensaje enviado y guardado.')
           setHistoryStatus('Persistencia confirmada en Firestore.')
         })
 
-        socket.on('message_failed', (payload) => {
+        socketInstance.on('message_failed', (payload) => {
           if (!isMounted) return
           setSending(false)
-          const message = payload?.message || 'No se pudo guardar el mensaje en Firestore.'
-          setError(message)
-          setHistoryStatus(message)
+          const msg = payload?.message || 'No se pudo guardar el mensaje en Firestore.'
+          setError(msg)
+          setHistoryStatus(msg)
         })
 
-        socket.on('chat_error', (payload) => {
+        socketInstance.on('chat_error', (payload) => {
           if (!isMounted) return
           setError(payload?.message || 'No se pudo enviar el mensaje.')
           setSending(false)
         })
 
-        socket.on('disconnect', () => {
+        socketInstance.on('disconnect', () => {
           if (!isMounted) return
           setHasJoinedRoom(false)
           setSocketState('Desconectado del servidor en tiempo real.')
         })
 
-        socket.on('error', (payload) => {
+        socketInstance.on('error', (payload) => {
           if (!isMounted) return
           setHasJoinedRoom(false)
           setError(payload?.message || 'Ocurrió un error en la conexión de tiempo real.')
           setSending(false)
         })
 
-        socket.connect()
+        socketInstance.connect()
       } catch (err) {
         if (!isMounted) return
         setError(getApiErrorMessage(err))
@@ -276,19 +292,25 @@ function RoomDetail() {
       }
     }
 
-    if (user && roomId) {
-      loadRoom()
-    }
+    if (user && roomId) loadRoom()
 
     return () => {
       isMounted = false
-      if (socket) {
-        socket.emit('leave_room', { roomId })
-        socket.disconnect()
+      if (socketInstance) {
+        socketInstance.emit('leave_room', { roomId })
+        socketInstance.disconnect()
       }
       socketRef.current = null
+      setSocket(null)
     }
   }, [user, roomId, navigationRoomCode])
+
+  // Sprint 4: cuando el peer está listo, llamar a los que ya estaban en la sala
+  useEffect(() => {
+    if (peerReady && participants.length > 0) {
+      callExistingPeers(participants)
+    }
+  }, [peerReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const participantTotal = useMemo(() => {
     if (participants.length > 0) return participants.length
@@ -311,7 +333,6 @@ function RoomDetail() {
   const handleChatScroll = () => {
     const container = chatMessagesRef.current
     if (!container) return
-
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
     const isNearBottom = distanceFromBottom < 96
     shouldStickToBottomRef.current = isNearBottom
@@ -321,18 +342,12 @@ function RoomDetail() {
   const handleSendMessage = (event) => {
     event.preventDefault()
     setError('')
-
     const cleanText = messageText.trim()
-    if (!cleanText) {
-      setError('Escribe un mensaje antes de enviarlo.')
-      return
-    }
-
+    if (!cleanText) { setError('Escribe un mensaje antes de enviarlo.'); return }
     if (!socketRef.current?.connected || !hasJoinedRoom) {
       setError('Aún no estás conectado a la sala por WebSockets.')
       return
     }
-
     const clientMessageId = `client-${user.uid}-${Date.now()}`
     shouldStickToBottomRef.current = true
     setSending(true)
@@ -344,9 +359,10 @@ function RoomDetail() {
   return (
     <AppLayout
       title={room?.name || 'Detalle de sala'}
-      subtitle="Sala con ID único, participantes conectados y chat sencillo en tiempo real."
+      subtitle="Sala de estudio con video P2P, chat en tiempo real e historial en Firestore."
     >
       <div className="room-detail-grid">
+        {/* ─── Panel izquierdo: info + participantes ─────────────────── */}
         <section className="rooms-panel room-summary-panel" aria-labelledby="room-overview-title">
           <div className="rooms-panel-header">
             <div>
@@ -377,7 +393,7 @@ function RoomDetail() {
                       Copiar ID
                     </button>
                   ) : (
-                    <p>El código está oculto. Pídeselo al anfitrión para entrar como invitado.</p>
+                    <p>El código está oculto. Pídeselo al anfitrión.</p>
                   )}
                 </article>
 
@@ -412,7 +428,6 @@ function RoomDetail() {
                   const initial = (participant.displayName || 'S').charAt(0).toUpperCase()
                   const hasRemoteAvatar = typeof participant.photoURL === 'string' && participant.photoURL.startsWith('http')
                   const avatarClass = hasRemoteAvatar ? '' : (participant.photoURL || 'avatar-blue')
-
                   return (
                     <article key={participant.uid} className="participant-card">
                       <div className={`participant-avatar ${avatarClass}`} aria-hidden="true">
@@ -420,7 +435,14 @@ function RoomDetail() {
                       </div>
                       <div>
                         <h3>{participant.displayName}</h3>
-                        <p>{participant.uid === user?.uid ? (isCurrentUserHost ? 'Tú / anfitrión' : 'Tú / invitado') : 'Participante conectado'}</p>
+                        <p>
+                          {participant.uid === user?.uid
+                            ? (isCurrentUserHost ? 'Tú / anfitrión' : 'Tú / invitado')
+                            : 'Participante conectado'}
+                        </p>
+                        {/* Sprint 4: indicadores de estado de media */}
+                        {participant.isMuted     && <span className="media-badge muted">🔇</span>}
+                        {participant.isCameraOff && <span className="media-badge">📷</span>}
                       </div>
                     </article>
                   )
@@ -430,18 +452,42 @@ function RoomDetail() {
           </section>
         </section>
 
+        {/* ─── Panel derecho: video + chat ───────────────────────────── */}
         <section className="rooms-panel chat-panel" aria-labelledby="chat-title">
+
+          {/* Sprint 4 (US-09, US-12): Grid de video */}
+          {hasJoinedRoom && (
+            <>
+              <VideoControls
+                isMuted={isMuted}
+                isCameraOff={isCameraOff}
+                onToggleMute={toggleMute}
+                onToggleCamera={toggleCamera}
+                peerReady={peerReady}
+                mediaError={mediaError}
+              />
+              <VideoGrid
+                localStream={localStream}
+                remoteStreams={remoteStreams}
+                isMuted={isMuted}
+                isCameraOff={isCameraOff}
+                displayName={profile?.displayName || user?.displayName || 'Tú'}
+              />
+            </>
+          )}
+
+          {/* Chat */}
           <div className="chat-header-row">
             <div>
               <h2 id="chat-title">Chat de la sala</h2>
-              <p>Mensajería instantánea por WebSockets con historial persistente en Firestore.</p>
+              <p>Mensajería instantánea con historial persistente en Firestore.</p>
             </div>
             <span className={`chat-live-badge ${hasJoinedRoom ? 'online' : ''}`}>
               {hasJoinedRoom ? 'En línea' : 'Conectando'}
             </span>
           </div>
 
-          {chatStatus && <p className="chat-status" role="status">{chatStatus}</p>}
+          {chatStatus    && <p className="chat-status"         role="status">{chatStatus}</p>}
           {historyLoading && <p className="chat-history-status" role="status">Cargando historial desde Firestore...</p>}
           {historyStatus && <p className="chat-history-status" role="status">{historyStatus}</p>}
 
@@ -457,13 +503,16 @@ function RoomDetail() {
               {messages.length === 0 ? (
                 <div className="chat-empty-state">
                   <strong>Aún no hay mensajes guardados</strong>
-                  <span>El historial de Firestore se mostrara aqui al entrar o recargar.</span>
+                  <span>El historial de Firestore se mostrará aquí al entrar o recargar.</span>
                 </div>
               ) : (
                 messages.map((message) => {
                   const isMine = message.senderUid === user?.uid
                   return (
-                    <article key={message.id || message.clientMessageId || `${message.senderUid}-${message.createdAt}`} className={`chat-message ${isMine ? 'mine' : ''}`}>
+                    <article
+                      key={message.id || message.clientMessageId || `${message.senderUid}-${message.createdAt}`}
+                      className={`chat-message ${isMine ? 'mine' : ''}`}
+                    >
                       <div className="chat-message-header">
                         <strong>{isMine ? 'Tú' : message.senderName}</strong>
                         <span>{formatTime(message.createdAt) || 'Ahora'}</span>
