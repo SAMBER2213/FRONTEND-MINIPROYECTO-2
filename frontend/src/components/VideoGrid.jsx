@@ -1,14 +1,19 @@
 /**
- * VideoGrid.jsx — Sprint 4 (US-09, US-12)
+ * VideoGrid.jsx — Grid dinámico estilo Google Meet
  *
- * Grid de video estilo Google Meet:
- * - Borde VERDE = hablando (detectado por AudioContext / VAD)
- * - Borde AZUL  = silencioso / en sala
- * - Avatar con iniciales cuando la cámara está apagada
- * - Grid dinámico 1→2→3→4 columnas según cantidad de participantes
+ * Layout adaptativo:
+ *   1 persona  → tile centrado ocupa ~70% del ancho
+ *   2 personas → 2 columnas lado a lado
+ *   3-4        → 2 columnas, tiles cuadrados/16:9
+ *   5-6        → 3 columnas
+ *   7-9        → 3 columnas
+ *   10+        → 4 columnas
+ *
+ * Los tiles siempre llenan el espacio disponible (height: 100%)
+ * usando CSS grid con rows automáticas, igual que Meet.
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
-import '../styles/RoomDetail.css'
+import '../styles/VideoGrid.css'
 
 /* ── Paleta de colores para avatares ─────────────────────────────── */
 const AVATAR_COLORS = ['av-blue','av-green','av-purple','av-orange','av-pink','av-teal','av-red','av-indigo']
@@ -18,14 +23,10 @@ function avatarColor(uid = '') {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
 
-/* ── Hook: detecta actividad de voz en un MediaStream (VAD simple) ── */
+/* ── Hook VAD (Voice Activity Detection) ─────────────────────────── */
 function useVoiceActivity(stream, isMuted) {
-  const [speaking, setSpeaking]   = useState(false)
-  const analyserRef               = useRef(null)
-  const sourceRef                 = useRef(null)
-  const ctxRef                    = useRef(null)
-  const rafRef                    = useRef(null)
-  const frameCountRef             = useRef(0)
+  const [speaking, setSpeaking] = useState(false)
+  const refs = useRef({})
 
   useEffect(() => {
     if (!stream || isMuted) { setSpeaking(false); return }
@@ -33,56 +34,34 @@ function useVoiceActivity(stream, isMuted) {
     if (!audioTracks.length) return
 
     let mounted = true
+    try {
+      const ctx      = new (window.AudioContext || window.webkitAudioContext)()
+      const source   = ctx.createMediaStreamSource(stream)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      analyser.smoothingTimeConstant = 0.7
+      source.connect(analyser)
+      refs.current = { ctx, source, analyser }
 
-    const setup = () => {
-      try {
-        const ctx      = new (window.AudioContext || window.webkitAudioContext)()
-        const source   = ctx.createMediaStreamSource(stream)
-        const analyser = ctx.createAnalyser()
-        analyser.fftSize            = 512
-        analyser.smoothingTimeConstant = 0.7
-        source.connect(analyser)
-        ctxRef.current     = ctx
-        sourceRef.current  = source
-        analyserRef.current = analyser
+      const data  = new Uint8Array(analyser.frequencyBinCount)
+      const THRESH = 14, DEB = 4
+      let above = 0, below = 0
 
-        const data = new Uint8Array(analyser.frequencyBinCount)
-        const THRESHOLD = 14  // sensibilidad (0–255)
-        const DEBOUNCE  = 4   // frames consecutivos para confirmar
-
-        let consecutiveAbove = 0
-        let consecutiveBelow = 0
-
-        const loop = () => {
-          if (!mounted) return
-          analyser.getByteFrequencyData(data)
-          const avg = data.reduce((a, b) => a + b, 0) / data.length
-
-          if (avg > THRESHOLD) {
-            consecutiveAbove++
-            consecutiveBelow = 0
-            if (consecutiveAbove >= DEBOUNCE) setSpeaking(true)
-          } else {
-            consecutiveBelow++
-            consecutiveAbove = 0
-            if (consecutiveBelow >= DEBOUNCE * 3) setSpeaking(false)
-          }
-
-          rafRef.current = requestAnimationFrame(loop)
-        }
-        rafRef.current = requestAnimationFrame(loop)
-      } catch { /* navegador no soporta WebAudio */ }
-    }
-
-    setup()
+      const loop = () => {
+        if (!mounted) return
+        analyser.getByteFrequencyData(data)
+        const avg = data.reduce((a, b) => a + b, 0) / data.length
+        if (avg > THRESH) { above++; below = 0; if (above >= DEB)     setSpeaking(true)  }
+        else              { below++; above = 0; if (below >= DEB * 3) setSpeaking(false) }
+        refs.current.raf = requestAnimationFrame(loop)
+      }
+      refs.current.raf = requestAnimationFrame(loop)
+    } catch { /* WebAudio no disponible */ }
 
     return () => {
       mounted = false
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      try {
-        sourceRef.current?.disconnect()
-        ctxRef.current?.close()
-      } catch { /* ignore */ }
+      if (refs.current.raf) cancelAnimationFrame(refs.current.raf)
+      try { refs.current.source?.disconnect(); refs.current.ctx?.close() } catch { /**/ }
       setSpeaking(false)
     }
   }, [stream, isMuted])
@@ -90,75 +69,86 @@ function useVoiceActivity(stream, isMuted) {
   return speaking
 }
 
-/* ── Tile de un participante ─────────────────────────────────────── */
+/* ── Tile individual ─────────────────────────────────────────────── */
 function VideoTile({ stream, displayName, uid, isMuted, isCameraOff, isLocal }) {
-  const videoRef  = useRef(null)
-  const speaking  = useVoiceActivity(isLocal ? stream : stream, isMuted || isCameraOff === undefined ? isMuted : false)
-  const showCam   = stream && !isCameraOff
-  const initial   = (displayName || 'U').charAt(0).toUpperCase()
-  const color     = avatarColor(uid || displayName || '')
-
-  // Determinar clase de borde según actividad de voz
-  const voiceClass = isMuted ? 'voice-idle' : (speaking ? 'voice-active' : 'voice-idle')
+  const videoRef = useRef(null)
+  const speaking = useVoiceActivity(stream, isMuted)
+  const showCam  = Boolean(stream && !isCameraOff)
+  const initial  = (displayName || 'U').charAt(0).toUpperCase()
+  const color    = avatarColor(uid || displayName || '')
+  const voiceCls = isMuted ? 'voice-idle' : (speaking ? 'voice-active' : 'voice-idle')
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
     video.srcObject = stream || null
+    if (stream) video.play().catch(() => {})
   }, [stream])
 
   return (
-    <div className={`vg-tile-meet ${isLocal ? 'local' : ''} ${voiceClass}`}>
+    <div className={`vg-tile ${isLocal ? 'vg-local' : ''} ${voiceCls}`}>
+      {/* Video siempre montado para que srcObject funcione */}
       <video
         ref={videoRef}
-        className={`vg-meet-video${showCam ? ' visible' : ''}`}
+        className={`vg-video${showCam ? ' vg-visible' : ''}`}
         autoPlay
         playsInline
         muted={isLocal}
         aria-label={`Video de ${displayName}`}
       />
 
+      {/* Avatar cuando cámara off */}
       {!showCam && (
-        <div className={`vg-meet-avatar ${color}`} aria-hidden="true">
+        <div className={`vg-avatar ${color}`} aria-hidden="true">
           {initial}
         </div>
       )}
 
-      <div className="vg-meet-footer">
-        <span className="vg-meet-name">{isLocal ? `${displayName} (Tú)` : displayName}</span>
-        <div className="vg-meet-badges" aria-hidden="true">
-          {isMuted     && <span className="vg-meet-badge muted-badge"   title="Micrófono apagado">🔇</span>}
-          {isCameraOff && <span className="vg-meet-badge"               title="Cámara apagada">📷</span>}
+      {/* Footer con nombre y badges */}
+      <div className="vg-footer">
+        <span className="vg-name">{isLocal ? `${displayName} (Tú)` : displayName}</span>
+        <div className="vg-badges" aria-hidden="true">
+          {isMuted     && <span className="vg-badge vg-badge-muted"  title="Micrófono apagado">🔇</span>}
+          {isCameraOff && <span className="vg-badge"                 title="Cámara apagada">📷</span>}
         </div>
       </div>
+
+      {/* Indicador de voz activa */}
+      {speaking && !isMuted && <div className="vg-speaking-ring" aria-hidden="true" />}
     </div>
   )
 }
 
-/* ── Calcula columnas óptimas (estilo Meet) ──────────────────────── */
-function getCols(n) {
-  if (n === 1) return 1
-  if (n <= 4)  return 2
-  if (n <= 9)  return 3
-  return 4
+/* ── Calcular layout según número de tiles ───────────────────────── */
+function getLayout(n) {
+  if (n === 1) return { cols: 1, solo: true }
+  if (n === 2) return { cols: 2, solo: false }
+  if (n <= 4)  return { cols: 2, solo: false }
+  if (n <= 6)  return { cols: 3, solo: false }
+  if (n <= 9)  return { cols: 3, solo: false }
+  return       { cols: 4, solo: false }
 }
 
 /* ── Grid principal ──────────────────────────────────────────────── */
 export function VideoGrid({ localStream, remoteStreams, isMuted, isCameraOff, displayName, myUid, joined }) {
-  const total = 1 + remoteStreams.length
-  const cols  = getCols(total)
+  const total = 1 + (remoteStreams?.length || 0)
+  const { cols, solo } = getLayout(total)
 
   if (!joined) {
     return (
-      <div className="vg-empty-state">
-        <span className="vg-empty-icon">🎥</span>
+      <div className="vg-empty">
+        <div className="vg-empty-icon">🎥</div>
         <p>Conectando a la sala...</p>
       </div>
     )
   }
 
   return (
-    <div className="vg-grid-meet" style={{ '--vg-cols': cols }}>
+    <div
+      className={`vg-grid${solo ? ' vg-grid-solo' : ''}`}
+      style={{ '--vg-cols': cols }}
+      data-count={total}
+    >
       <VideoTile
         stream={localStream}
         displayName={displayName}
@@ -167,7 +157,7 @@ export function VideoGrid({ localStream, remoteStreams, isMuted, isCameraOff, di
         isCameraOff={isCameraOff}
         isLocal
       />
-      {remoteStreams.map(({ peerId, uid, displayName: rName, stream, isMuted: rMuted, isCameraOff: rCamOff }) => (
+      {(remoteStreams || []).map(({ peerId, uid, displayName: rName, stream, isMuted: rMuted, isCameraOff: rCamOff }) => (
         <VideoTile
           key={peerId}
           stream={stream}

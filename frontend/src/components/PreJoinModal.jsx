@@ -1,47 +1,52 @@
 /**
- * PreJoinModal.jsx
+ * PreJoinModal.jsx — Vista previa al estilo Google Meet
  *
- * Pantalla de previsualización antes de entrar a la sala,
- * al estilo Google Meet: muestra el feed de cámara en vivo,
- * permite silenciar/apagar cámara y confirmar la entrada.
+ * Fixes:
+ *  1. El <video> SIEMPRE está en el DOM (oculto) para que videoRef.current
+ *     exista cuando el stream llega async. No se desmonta al apagar cámara.
+ *  2. Al apagar cámara en el preview, se desactiva el track pero el stream
+ *     sigue vivo → useWebRTC recibe los estados correctos al entrar.
+ *  3. useWebRTC recibe initialCameraOff / initialMuted y aplica los tracks
+ *     inmediatamente — sin doble request de permisos.
  */
 import { useEffect, useRef, useState } from 'react'
 import '../styles/PreJoinModal.css'
 
 export function PreJoinModal({ roomName, onJoin, onCancel }) {
-  const videoRef = useRef(null)
+  const videoRef  = useRef(null)
   const streamRef = useRef(null)
 
-  const [cameraOn, setCameraOn]   = useState(true)
-  const [micOn,    setMicOn]      = useState(true)
-  const [loading,  setLoading]    = useState(true)
-  const [camError, setCamError]   = useState('')
+  const [cameraOn, setCameraOn] = useState(true)
+  const [micOn,    setMicOn]    = useState(true)
+  const [loading,  setLoading]  = useState(true)
+  const [camError, setCamError] = useState('')
 
-  /* ── Solicitar acceso a medios ─────────────────────────────── */
+  /* ── 1. Pedir permisos y arrancar stream ───────────────────── */
   useEffect(() => {
     let active = true
 
     const startMedia = async () => {
-      setLoading(true)
-      setCamError('')
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        })
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         if (!active) { stream.getTracks().forEach(t => t.stop()); return }
         streamRef.current = stream
-        if (videoRef.current) videoRef.current.srcObject = stream
+        // videoRef.current YA existe porque el <video> está siempre en el DOM
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream
+          videoRef.current.play().catch(() => {})
+        }
       } catch {
-        // Intentar solo audio si la cámara falla
         try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-          if (!active) { audioStream.getTracks().forEach(t => t.stop()); return }
-          streamRef.current = audioStream
+          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          if (!active) { audioOnly.getTracks().forEach(t => t.stop()); return }
+          streamRef.current = audioOnly
           setCameraOn(false)
           setCamError('Cámara no disponible. Puedes entrar solo con audio.')
         } catch {
-          if (active) setCamError('No se pudo acceder a cámara ni micrófono. Verifica los permisos.')
+          if (active) {
+            setCameraOn(false)
+            setCamError('Sin acceso a cámara ni micrófono. Revisa los permisos del navegador.')
+          }
         }
       } finally {
         if (active) setLoading(false)
@@ -49,7 +54,6 @@ export function PreJoinModal({ roomName, onJoin, onCancel }) {
     }
 
     startMedia()
-
     return () => {
       active = false
       streamRef.current?.getTracks().forEach(t => t.stop())
@@ -57,136 +61,126 @@ export function PreJoinModal({ roomName, onJoin, onCancel }) {
     }
   }, [])
 
-  /* ── Sincronizar tracks al cambiar toggles ─────────────────── */
-  useEffect(() => {
-    const stream = streamRef.current
-    if (!stream) return
-    stream.getVideoTracks().forEach(t => { t.enabled = cameraOn })
-  }, [cameraOn])
+  /* ── 2. Apagar/encender tracks SIN destruir el stream ─────── */
+  const toggleCamera = () => {
+    const next = !cameraOn
+    setCameraOn(next)
+    streamRef.current?.getVideoTracks().forEach(t => { t.enabled = next })
+  }
 
-  useEffect(() => {
-    const stream = streamRef.current
-    if (!stream) return
-    stream.getAudioTracks().forEach(t => { t.enabled = micOn })
-  }, [micOn])
+  const toggleMic = () => {
+    const next = !micOn
+    setMicOn(next)
+    streamRef.current?.getAudioTracks().forEach(t => { t.enabled = next })
+  }
 
-  /* ── Confirmar entrada ─────────────────────────────────────── */
+  /* ── 3. Entrar: pasar preferencias a useWebRTC ─────────────── */
   const handleJoin = () => {
-    // Detener el stream de preview — useWebRTC creará el suyo propio
+    // Detener preview — useWebRTC abrirá su propio stream
     streamRef.current?.getTracks().forEach(t => t.stop())
     streamRef.current = null
     onJoin({ cameraOn, micOn })
   }
 
-  const hasVideo = cameraOn && !camError.includes('no disponible') && !camError.includes('no se pudo')
+  const camUnavailable = camError.includes('no disponible') || camError.includes('Sin acceso')
 
   return (
     <div className="pj-overlay" role="dialog" aria-modal="true" aria-label="Vista previa antes de entrar">
       <div className="pj-card">
 
-        {/* ── Título ──────────────────────────────────────────── */}
+        {/* Título */}
         <div className="pj-header">
           <span className="pj-badge">🎥</span>
           <div>
-            <h2 className="pj-title">Listo para unirte?</h2>
+            <h2 className="pj-title">¿Listo para unirte?</h2>
             <p className="pj-subtitle">{roomName || 'Sala de estudio'}</p>
           </div>
         </div>
 
-        {/* ── Preview de cámara ────────────────────────────────── */}
+        {/* Preview */}
         <div className="pj-preview-wrap">
+          {/* Spinner mientras carga */}
           {loading && (
-            <div className="pj-preview-placeholder">
+            <div className="pj-preview-overlay">
               <div className="pj-spinner" />
               <span>Iniciando cámara…</span>
             </div>
           )}
 
-          {!loading && hasVideo && (
-            <video
-              ref={videoRef}
-              className="pj-preview-video"
-              autoPlay
-              muted
-              playsInline
-            />
-          )}
-
-          {!loading && !hasVideo && (
-            <div className="pj-preview-placeholder">
+          {/* Avatar cuando cámara apagada (encima del video) */}
+          {!loading && !cameraOn && (
+            <div className="pj-preview-overlay">
               <span className="pj-cam-off-icon">📷</span>
               <span>Cámara apagada</span>
             </div>
           )}
 
-          {/* Overlay con nombre */}
-          {!loading && (
-            <div className="pj-preview-name-badge">Tú</div>
-          )}
+          {/* 
+            El <video> SIEMPRE está en el DOM para que videoRef.current exista
+            cuando el stream llega de forma asíncrona.
+            Se oculta visualmente cuando la cámara está apagada o cargando.
+          */}
+          <video
+            ref={videoRef}
+            className={`pj-preview-video${!loading && cameraOn ? ' visible' : ''}`}
+            autoPlay
+            muted
+            playsInline
+          />
 
-          {/* Indicadores de estado encima del video */}
+          {/* Badge "Tú" */}
+          {!loading && <div className="pj-preview-name-badge">Tú</div>}
+
+          {/* Chips de estado */}
           {!loading && (
             <div className="pj-preview-status">
-              {!micOn    && <span className="pj-status-chip">🔇 Silenciado</span>}
-              {!cameraOn && <span className="pj-status-chip">📷 Cámara off</span>}
+              {!micOn    && <span className="pj-status-chip mic-off">🔇 Silenciado</span>}
+              {!cameraOn && <span className="pj-status-chip cam-off">📷 Sin cámara</span>}
             </div>
           )}
         </div>
 
-        {/* ── Error de media ───────────────────────────────────── */}
-        {camError && (
-          <div className="pj-media-error" role="alert">⚠ {camError}</div>
-        )}
+        {/* Error */}
+        {camError && <div className="pj-media-error" role="alert">⚠ {camError}</div>}
 
-        {/* ── Controles de cámara y micrófono ─────────────────── */}
+        {/* Controles */}
         <div className="pj-controls">
           <button
             className={`pj-ctrl-btn${micOn ? '' : ' off'}`}
             type="button"
-            onClick={() => setMicOn(v => !v)}
+            onClick={toggleMic}
             aria-pressed={!micOn}
             title={micOn ? 'Silenciar micrófono' : 'Activar micrófono'}
           >
             <span className="pj-ctrl-icon">{micOn ? '🎤' : '🔇'}</span>
-            <span className="pj-ctrl-label">{micOn ? 'Micrófono' : 'Silenciado'}</span>
+            <span className="pj-ctrl-label">{micOn ? 'Micrófono activo' : 'Silenciado'}</span>
           </button>
 
           <button
             className={`pj-ctrl-btn${cameraOn ? '' : ' off'}`}
             type="button"
-            onClick={() => setCameraOn(v => !v)}
-            disabled={camError.includes('no disponible') || camError.includes('no se pudo')}
+            onClick={toggleCamera}
+            disabled={camUnavailable}
             aria-pressed={!cameraOn}
             title={cameraOn ? 'Apagar cámara' : 'Activar cámara'}
           >
             <span className="pj-ctrl-icon">{cameraOn ? '🎥' : '📷'}</span>
-            <span className="pj-ctrl-label">{cameraOn ? 'Cámara' : 'Cámara off'}</span>
+            <span className="pj-ctrl-label">{cameraOn ? 'Cámara activa' : 'Cámara apagada'}</span>
           </button>
         </div>
 
-        {/* ── Botones de acción ────────────────────────────────── */}
+        {/* Acciones */}
         <div className="pj-actions">
-          <button
-            className="pj-btn-cancel"
-            type="button"
-            onClick={onCancel}
-          >
+          <button className="pj-btn-cancel" type="button" onClick={onCancel}>
             Cancelar
           </button>
-
-          <button
-            className="pj-btn-join"
-            type="button"
-            onClick={handleJoin}
-            disabled={loading}
-          >
+          <button className="pj-btn-join" type="button" onClick={handleJoin} disabled={loading}>
             {loading ? 'Preparando…' : 'Unirme ahora'}
           </button>
         </div>
 
-        {/* ── Indicación de privacidad ─────────────────────────── */}
         <p className="pj-privacy-note">
-          Solo los participantes de la sala podrán ver y escucharte.
+          Solo los participantes de la sala podrán verte y escucharte.
         </p>
       </div>
     </div>

@@ -357,7 +357,7 @@ function RoomDetail() {
               isCameraOff={isCameraOff}
               displayName={myDisplayName}
               myUid={user?.uid}
-              joined={hasJoined || loading}
+              joined={hasJoined}
             />
           </div>
 
