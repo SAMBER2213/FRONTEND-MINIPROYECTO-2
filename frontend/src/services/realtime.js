@@ -20,8 +20,6 @@ export function getRealtimeClient() {
   return socketInstance
 }
 
-// Mantener compatibilidad con el código existente en RoomDetail.
-// forceNew evita que dos pantallas compartan listeners de una sesión anterior.
 export function createRealtimeClient() {
   return io(REALTIME_URL, {
     ...SOCKET_OPTIONS,
@@ -32,10 +30,30 @@ export function createRealtimeClient() {
 
 /**
  * Emite join_room incluyendo roomCode si la sala es privada.
- * El backend lo requiere para validar el acceso a salas privadas.
  */
 export function joinRoom(socket, roomId, token, roomCode = null) {
   const payload = { roomId, token }
   if (roomCode) payload.roomCode = roomCode
   socket.emit('join_room', payload)
 }
+
+/**
+ * Sprint 4 (TS-03): Solicita al backend la configuración ICE (STUN + ExpressTURN).
+ * Devuelve una promesa que resuelve con el array RTCIceServer[].
+ */
+export function getIceServers(socket) {
+  return new Promise((resolve) => {
+    socket.once('ice_servers', ({ iceServers }) => resolve(iceServers))
+    socket.emit('get_ice_servers')
+  })
+}
+
+/**
+ * Sprint 4 (TS-03): Registra el peerId de PeerJS en el servidor
+ * para que los demás participantes puedan iniciar llamadas.
+ */
+export function registerPeer(socket, roomId, peerId) {
+  socket.emit('register_peer', { roomId, peerId })
+}
+
+export { REALTIME_URL }

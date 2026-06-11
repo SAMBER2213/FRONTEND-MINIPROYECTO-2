@@ -794,3 +794,16 @@
   font-weight: 900;
   letter-spacing: 0.02em;
 }
+
+/* ─── Sprint 4: media badges en lista de participantes ──────────── */
+.media-badge {
+  display: inline-block;
+  font-size: 12px;
+  margin-left: 4px;
+  background: rgba(239,68,68,0.12);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+.media-badge.muted {
+  background: rgba(239,68,68,0.12);
+}
