@@ -4,552 +4,533 @@ import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../context/useAuth'
 import { getApiErrorMessage, getRoomById, getRoomMessages } from '../services/api'
 import { createRealtimeClient, joinRoom } from '../services/realtime'
-import { VideoGrid, VideoControls } from '../components/VideoGrid'
+import { VideoGrid } from '../components/VideoGrid'
 import { useWebRTC } from '../hooks/useWebRTC'
-import '../styles/Rooms.css'
+import '../styles/RoomDetail.css'
 
+/* ── Helpers ─────────────────────────────────────────────────────── */
 function formatDate(value) {
   if (!value) return 'Sin fecha'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('es-CO', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' }).format(d)
 }
 
 function formatTime(value) {
   if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return new Intl.DateTimeFormat('es-CO', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
-function copyText(value) {
-  if (!value) return Promise.resolve()
-  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value)
-  return Promise.resolve()
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' }).format(d)
 }
 
 function getStoredRoomCode(roomId) {
   return window.sessionStorage.getItem(`studysync:roomCode:${roomId}`) || ''
 }
 
-function storeRoomCode(roomId, roomCode) {
-  if (roomId && roomCode) {
-    window.sessionStorage.setItem(`studysync:roomCode:${roomId}`, roomCode)
-  }
+function storeRoomCode(roomId, code) {
+  if (roomId && code) window.sessionStorage.setItem(`studysync:roomCode:${roomId}`, code)
 }
 
-function appendUniqueMessage(currentMessages, incomingMessage) {
-  if (!incomingMessage) return currentMessages
-  const incomingId = incomingMessage.id || incomingMessage.clientMessageId
-
-  if (incomingId) {
-    const exists = currentMessages.some((message) => (
-      message.id === incomingId || message.clientMessageId === incomingId
-    ))
-    if (exists) return currentMessages
-  }
-
-  return [...currentMessages, incomingMessage]
+function appendUnique(list, msg) {
+  if (!msg) return list
+  const id = msg.id || msg.clientMessageId
+  if (id && list.some((m) => m.id === id || m.clientMessageId === id)) return list
+  return [...list, msg]
 }
 
+/* Paleta de colores para avatares de participantes */
+const AVATAR_COLORS = ['av-blue','av-green','av-purple','av-orange','av-pink','av-teal','av-red','av-indigo']
+function avatarColor(uid = '') {
+  let h = 0
+  for (let i = 0; i < uid.length; i++) h = (h * 31 + uid.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[h % AVATAR_COLORS.length]
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Componente principal
+   ═══════════════════════════════════════════════════════════════════ */
 function RoomDetail() {
-  const { roomId } = useParams()
-  const { user, profile } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
-  const socketRef = useRef(null)
-  const chatMessagesRef = useRef(null)
-  const chatBottomRef = useRef(null)
-  const chatScrollFrameRef = useRef(null)
-  const shouldStickToBottomRef = useRef(true)
+  const { roomId }           = useParams()
+  const { user, profile }    = useAuth()
+  const navigate             = useNavigate()
+  const location             = useLocation()
 
-  const [room, setRoom] = useState(null)
-  const [participants, setParticipants] = useState([])
-  const [messages, setMessages] = useState([])
-  const [messageText, setMessageText] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [sending, setSending] = useState(false)
-  const [hasJoinedRoom, setHasJoinedRoom] = useState(false)
-  const [socketState, setSocketState] = useState('Conectando...')
-  const [chatStatus, setChatStatus] = useState('')
-  const [historyStatus, setHistoryStatus] = useState('')
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [showScrollButton, setShowScrollButton] = useState(false)
-  const [error, setError] = useState('')
-  const [copied, setCopied] = useState('')
-  const [socket, setSocket] = useState(null)
+  /* ── Refs ──────────────────────────────────────────────────────── */
+  const socketRef            = useRef(null)
+  const chatMessagesRef      = useRef(null)
+  const chatBottomRef        = useRef(null)
+  const shouldStickRef       = useRef(true)
 
-  const navigationRoomCode = typeof location.state?.roomCode === 'string' ? location.state.roomCode : ''
+  /* ── Estado de sala y conexión ─────────────────────────────────── */
+  const [room,            setRoom]           = useState(null)
+  const [participants,    setParticipants]    = useState([])
+  const [loading,         setLoading]         = useState(true)
+  const [hasJoined,       setHasJoined]       = useState(false)
+  const [socketState,     setSocketState]     = useState('Conectando...')
+  const [error,           setError]           = useState('')
+  const [socket,          setSocket]          = useState(null)
 
-  // ─── Sprint 4: WebRTC + PeerJS ────────────────────────────────────
-  const {
-    localStream,
-    remoteStreams,
-    isMuted,
-    isCameraOff,
-    mediaError,
-    peerReady,
-    toggleMute,
-    toggleCamera,
-    callExistingPeers,
-  } = useWebRTC({
-    socket,
-    roomId,
-    myUid: user?.uid,
-    enabled: hasJoinedRoom,
-  })
+  /* ── Estado del chat ───────────────────────────────────────────── */
+  const [messages,        setMessages]        = useState([])
+  const [messageText,     setMessageText]     = useState('')
+  const [sending,         setSending]         = useState(false)
+  const [chatOpen,        setChatOpen]        = useState(false)
 
-  // ─── Chat scroll helpers ──────────────────────────────────────────
-  const scrollChatToBottom = useCallback((behavior = 'smooth') => {
-    if (chatScrollFrameRef.current) {
-      window.cancelAnimationFrame(chatScrollFrameRef.current)
-    }
-    chatScrollFrameRef.current = window.requestAnimationFrame(() => {
-      const container = chatMessagesRef.current
-      if (!container) { chatScrollFrameRef.current = null; return }
-      container.scrollTo({ top: container.scrollHeight, behavior })
-      chatBottomRef.current?.scrollIntoView({ behavior, block: 'end' })
-      shouldStickToBottomRef.current = true
-      setShowScrollButton(false)
-      chatScrollFrameRef.current = null
+  /* ── Modal info sala ───────────────────────────────────────────── */
+  const [infoOpen,        setInfoOpen]        = useState(false)
+  const [copied,          setCopied]          = useState('')
+
+  /* ── Scroll del chat ───────────────────────────────────────────── */
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    requestAnimationFrame(() => {
+      const c = chatMessagesRef.current
+      if (!c) return
+      c.scrollTo({ top: c.scrollHeight, behavior })
+      shouldStickRef.current = true
     })
   }, [])
 
-  useEffect(() => () => {
-    if (chatScrollFrameRef.current) window.cancelAnimationFrame(chatScrollFrameRef.current)
-  }, [])
-
   useEffect(() => {
-    if (messages.length === 0) { setShowScrollButton(false); return }
-    if (shouldStickToBottomRef.current) {
-      scrollChatToBottom(messages.length === 1 ? 'auto' : 'smooth')
-    } else {
-      setShowScrollButton(true)
-    }
-  }, [messages, scrollChatToBottom])
+    if (messages.length === 0) return
+    if (shouldStickRef.current) scrollToBottom(messages.length === 1 ? 'auto' : 'smooth')
+  }, [messages, scrollToBottom])
 
-  // ─── Socket + sala ────────────────────────────────────────────────
+  /* ── roomCode de navegación ────────────────────────────────────── */
+  const navCode = typeof location.state?.roomCode === 'string' ? location.state.roomCode : ''
+
+  /* ── WebRTC ────────────────────────────────────────────────────── */
+  const {
+    localStream, remoteStreams,
+    isMuted, isCameraOff,
+    mediaError, peerReady,
+    toggleMute, toggleCamera,
+    callExistingPeers,
+  } = useWebRTC({ socket, roomId, myUid: user?.uid, enabled: hasJoined })
+
+  /* ── Socket: cargar sala y conectar ────────────────────────────── */
   useEffect(() => {
-    let isMounted = true
-    let socketInstance = null
+    let mounted = true
+    let socketInst = null
 
-    const loadRoom = async () => {
+    const load = async () => {
       setLoading(true)
       setError('')
-      setCopied('')
-      setChatStatus('')
-      setHistoryStatus('')
-      setHasJoinedRoom(false)
+      setHasJoined(false)
+      setMessages([])
+      setParticipants([])
 
       try {
-        const roomResponse = await getRoomById(user, roomId)
-        if (!isMounted) return
-
-        const roomData = roomResponse.data
-        const roomCodeForJoin = navigationRoomCode || getStoredRoomCode(roomId) || roomData?.roomCode || ''
+        const roomRes  = await getRoomById(user, roomId)
+        if (!mounted) return
+        const roomData = roomRes.data
+        const code     = navCode || getStoredRoomCode(roomId) || roomData?.roomCode || ''
 
         setRoom(roomData)
         if (roomData?.roomCode) storeRoomCode(roomId, roomData.roomCode)
-        shouldStickToBottomRef.current = true
-        setMessages([])
-        setParticipants([])
         setSocketState('Conectando al servidor en tiempo real...')
 
-        // Cargar historial
-        setHistoryLoading(true)
+        /* Historial */
         try {
-          const messagesResponse = await getRoomMessages(user, roomId, { limit: 75, roomCode: roomCodeForJoin })
-          if (!isMounted) return
-          const restoredMessages = messagesResponse.data || []
-          setMessages(restoredMessages)
-          setHistoryStatus(
-            restoredMessages.length > 0
-              ? `Historial Firestore cargado: ${restoredMessages.length} mensaje${restoredMessages.length === 1 ? '' : 's'} recuperado${restoredMessages.length === 1 ? '' : 's'}.`
-              : 'Historial Firestore cargado: no hay mensajes guardados todavia.'
-          )
-        } catch (historyError) {
-          if (!isMounted) return
-          setMessages([])
-          setHistoryStatus(`No se pudo cargar el historial desde Firestore: ${getApiErrorMessage(historyError)}`)
-        } finally {
-          if (isMounted) setHistoryLoading(false)
-        }
+          const msgRes = await getRoomMessages(user, roomId, { limit: 75, roomCode: code })
+          if (!mounted) return
+          setMessages(msgRes.data || [])
+        } catch { /* silently fail */ }
 
-        socketInstance = createRealtimeClient()
-        socketRef.current = socketInstance
+        /* Socket */
+        const { createRealtimeClient: makeClient } = await import('../services/realtime')
+        socketInst = makeClient()
+        socketRef.current = socketInst
 
-        const emitJoinRoom = async () => {
-          if (!user || !isMounted) return
-          setSocketState('Validando acceso a la sala...')
+        const doJoin = async () => {
+          if (!user || !mounted) return
+          setSocketState('Validando acceso...')
           const token = await user.getIdToken()
-          joinRoom(socketInstance, roomId, token, roomCodeForJoin)
+          joinRoom(socketInst, roomId, token, code)
         }
 
-        socketInstance.on('connect', emitJoinRoom)
+        socketInst.on('connect',         doJoin)
+        socketInst.on('connect_error',   () => { if (!mounted) return; setSocketState('Error de conexión.'); setError('No se pudo conectar al servidor de tiempo real.') })
+        socketInst.on('reconnect_attempt', () => { if (!mounted) return; setHasJoined(false); setSocketState('Reconectando...') })
 
-        socketInstance.on('connect_error', () => {
-          if (!isMounted) return
-          setHasJoinedRoom(false)
-          setSocketState('No se pudo conectar al servidor de tiempo real.')
-          setError('No se pudo conectar con WebSockets. Verifica que el backend realtime esté activo.')
+        socketInst.on('room_joined', (p) => {
+          if (!mounted) return
+          setParticipants(p.participants || [])
+          setRoom((r) => r ? ({ ...r, participantCount: (p.participants || []).length }) : r)
+          setHasJoined(true)
+          setSocketState('Conectado')
+          setSocket(socketInst)
         })
 
-        socketInstance.on('reconnect_attempt', () => {
-          if (!isMounted) return
-          setHasJoinedRoom(false)
-          setSocketState('Reconectando al chat...')
+        socketInst.on('participant_joined', (p) => {
+          if (!mounted) return
+          setParticipants(p.participants || [])
+          setRoom((r) => r ? ({ ...r, participantCount: (p.participants || []).length }) : r)
         })
 
-        socketInstance.on('room_joined', (payload) => {
-          if (!isMounted) return
-          const participantList = payload.participants || []
-          setParticipants(participantList)
-          setRoom((current) => current ? ({
-            ...current,
-            participantCount: participantList.length,
-          }) : current)
-          setHasJoinedRoom(true)
-          setSocketState('Conectado por WebSockets.')
-          setChatStatus('Chat listo.')
-          // Sprint 4: exponer el socket al hook de WebRTC y llamar peers existentes
-          setSocket(socketInstance)
-          // callExistingPeers se llama desde useWebRTC cuando peerReady cambia
-        })
-
-        socketInstance.on('participant_joined', (payload) => {
-          if (!isMounted) return
-          setParticipants(payload.participants || [])
-          setRoom((current) => current ? ({
-            ...current,
-            participantCount: (payload.participants || []).length,
-          }) : current)
-        })
-
-        socketInstance.on('participant_left', (payload) => {
-          if (!isMounted) return
-          setParticipants((current) => {
-            const updated = current.filter((p) => p.uid !== payload.uid)
-            setRoom((prev) => prev ? ({ ...prev, participantCount: updated.length }) : prev)
+        socketInst.on('participant_left', (p) => {
+          if (!mounted) return
+          setParticipants((prev) => {
+            const updated = prev.filter((x) => x.uid !== p.uid)
+            setRoom((r) => r ? ({ ...r, participantCount: updated.length }) : r)
             return updated
           })
         })
 
-        socketInstance.on('new_message', (message) => {
-          if (!isMounted) return
-          setMessages((current) => appendUniqueMessage(current, message))
+        socketInst.on('new_message', (msg) => {
+          if (!mounted) return
+          setMessages((prev) => appendUnique(prev, msg))
           setSending(false)
-          shouldStickToBottomRef.current = true
-          setChatStatus('Mensaje recibido en tiempo real.')
-          setHistoryStatus('Nuevo mensaje guardado en Firestore.')
+          shouldStickRef.current = true
         })
 
-        socketInstance.on('message_saved', () => {
-          if (!isMounted) return
-          setSending(false)
-          setChatStatus('Mensaje enviado y guardado.')
-          setHistoryStatus('Persistencia confirmada en Firestore.')
-        })
+        socketInst.on('message_saved',  () => { if (mounted) setSending(false) })
+        socketInst.on('message_failed', (p) => { if (mounted) { setSending(false); setError(p?.message || 'Error al guardar mensaje.') } })
+        socketInst.on('chat_error',     (p) => { if (mounted) { setSending(false); setError(p?.message || 'Error al enviar mensaje.') } })
+        socketInst.on('disconnect',     () => { if (mounted) { setHasJoined(false); setSocketState('Desconectado.') } })
+        socketInst.on('error',          (p) => { if (mounted) { setHasJoined(false); setError(p?.message || 'Error de conexión.') } })
 
-        socketInstance.on('message_failed', (payload) => {
-          if (!isMounted) return
-          setSending(false)
-          const msg = payload?.message || 'No se pudo guardar el mensaje en Firestore.'
-          setError(msg)
-          setHistoryStatus(msg)
-        })
-
-        socketInstance.on('chat_error', (payload) => {
-          if (!isMounted) return
-          setError(payload?.message || 'No se pudo enviar el mensaje.')
-          setSending(false)
-        })
-
-        socketInstance.on('disconnect', () => {
-          if (!isMounted) return
-          setHasJoinedRoom(false)
-          setSocketState('Desconectado del servidor en tiempo real.')
-        })
-
-        socketInstance.on('error', (payload) => {
-          if (!isMounted) return
-          setHasJoinedRoom(false)
-          setError(payload?.message || 'Ocurrió un error en la conexión de tiempo real.')
-          setSending(false)
-        })
-
-        socketInstance.connect()
+        socketInst.connect()
       } catch (err) {
-        if (!isMounted) return
-        setError(getApiErrorMessage(err))
+        if (mounted) setError(getApiErrorMessage(err))
       } finally {
-        if (isMounted) setLoading(false)
+        if (mounted) setLoading(false)
       }
     }
 
-    if (user && roomId) loadRoom()
+    if (user && roomId) load()
 
     return () => {
-      isMounted = false
-      if (socketInstance) {
-        socketInstance.emit('leave_room', { roomId })
-        socketInstance.disconnect()
+      mounted = false
+      if (socketInst) {
+        socketInst.emit('leave_room', { roomId })
+        socketInst.disconnect()
       }
       socketRef.current = null
       setSocket(null)
     }
-  }, [user, roomId, navigationRoomCode])
+  }, [user, roomId, navCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sprint 4: cuando el peer está listo, llamar a los que ya estaban en la sala
+  /* Llamar peers existentes cuando PeerJS está listo */
   useEffect(() => {
-    if (peerReady && participants.length > 0) {
-      callExistingPeers(participants)
-    }
+    if (peerReady && participants.length > 0) callExistingPeers(participants)
   }, [peerReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const participantTotal = useMemo(() => {
-    if (participants.length > 0) return participants.length
-    return room?.participantCount ?? 0
-  }, [participants, room])
+  /* ── Datos derivados ───────────────────────────────────────────── */
+  const participantTotal    = useMemo(() => participants.length || room?.participantCount || 0, [participants, room])
+  const visibleCode         = room?.roomCode || navCode || getStoredRoomCode(roomId)
+  const isHost              = room?.hostUid === user?.uid || room?.isHost
+  const myDisplayName       = profile?.displayName || user?.displayName || 'Tú'
+  const canSend             = hasJoined && !sending && Boolean(messageText.trim())
 
-  const isCurrentUserHost = room?.hostUid === user?.uid || room?.isHost
-  const visibleRoomCode = room?.roomCode || navigationRoomCode || getStoredRoomCode(roomId)
-  const canSendMessage = hasJoinedRoom && !sending && Boolean(messageText.trim())
-
-  const handleCopy = async (value, label) => {
+  /* ── Handlers ──────────────────────────────────────────────────── */
+  const handleCopy = async (val, label) => {
     try {
-      await copyText(value)
-      setCopied(`${label} copiado correctamente.`)
-    } catch {
-      setCopied(`No se pudo copiar el ${label.toLowerCase()}.`)
-    }
+      await navigator.clipboard?.writeText(val)
+      setCopied(`${label} copiado`)
+      setTimeout(() => setCopied(''), 2200)
+    } catch { setCopied('No se pudo copiar') }
   }
 
-  const handleChatScroll = () => {
-    const container = chatMessagesRef.current
-    if (!container) return
-    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-    const isNearBottom = distanceFromBottom < 96
-    shouldStickToBottomRef.current = isNearBottom
-    setShowScrollButton(!isNearBottom && messages.length > 0)
-  }
-
-  const handleSendMessage = (event) => {
-    event.preventDefault()
-    setError('')
-    const cleanText = messageText.trim()
-    if (!cleanText) { setError('Escribe un mensaje antes de enviarlo.'); return }
-    if (!socketRef.current?.connected || !hasJoinedRoom) {
-      setError('Aún no estás conectado a la sala por WebSockets.')
-      return
-    }
+  const handleSend = (e) => {
+    e.preventDefault()
+    const text = messageText.trim()
+    if (!text) return
+    if (!socketRef.current?.connected || !hasJoined) { setError('No estás conectado a la sala.'); return }
     const clientMessageId = `client-${user.uid}-${Date.now()}`
-    shouldStickToBottomRef.current = true
+    shouldStickRef.current = true
     setSending(true)
-    setChatStatus('Enviando mensaje por WebSocket...')
-    socketRef.current.emit('send_message', { roomId, text: cleanText, clientMessageId })
+    socketRef.current.emit('send_message', { roomId, text, clientMessageId })
     setMessageText('')
   }
 
+  const handleChatScroll = () => {
+    const c = chatMessagesRef.current
+    if (!c) return
+    shouldStickRef.current = (c.scrollHeight - c.scrollTop - c.clientHeight) < 80
+  }
+
+  /* ═══════════════════════════════════════════════════════════════ */
   return (
-    <AppLayout
-      title={room?.name || 'Detalle de sala'}
-      subtitle="Sala de estudio con video P2P, chat en tiempo real e historial en Firestore."
-    >
-      <div className="room-detail-grid">
-        {/* ─── Panel izquierdo: info + participantes ─────────────────── */}
-        <section className="rooms-panel room-summary-panel" aria-labelledby="room-overview-title">
-          <div className="rooms-panel-header">
-            <div>
-              <h2 id="room-overview-title">Información general</h2>
-              <p>{socketState}</p>
+    <AppLayout title={room?.name || 'Sala de estudio'} subtitle="">
+      {/* ── Shell principal ─────────────────────────────────────── */}
+      <div className="room-shell">
+
+        {/* ── Barra superior ──────────────────────────────────────── */}
+        <div className="room-topbar">
+          {/* Nombre e ID */}
+          <div className="room-topbar-left">
+            <span className="room-topbar-name">{room?.name || 'Sala de estudio'}</span>
+            {visibleCode && <span className="room-topbar-id">ID de la sala: {visibleCode}</span>}
+          </div>
+
+          {/* Fila de avatares de participantes */}
+          <div className="room-participants-row" aria-label="Participantes conectados">
+            {loading ? (
+              <span style={{ fontSize: 12, color: '#64748b' }}>Cargando...</span>
+            ) : participants.length === 0 ? (
+              <span style={{ fontSize: 12, color: '#64748b' }}>Sin participantes aún</span>
+            ) : participants.map((p) => {
+              const initial      = (p.displayName || 'U').charAt(0).toUpperCase()
+              const hasPhoto     = typeof p.photoURL === 'string' && p.photoURL.startsWith('http')
+              const color        = avatarColor(p.uid)
+              const isMe         = p.uid === user?.uid
+
+              return (
+                <div key={p.uid} className="room-participant-thumb" title={p.displayName}>
+                  <div className={`room-participant-avatar ${hasPhoto ? '' : color} voice-idle`}>
+                    {hasPhoto
+                      ? <img src={p.photoURL} alt="" />
+                      : initial}
+                  </div>
+                  <span className="room-participant-name">{isMe ? 'Tú' : p.displayName}</span>
+                  <div className="room-participant-badges">
+                    {p.isMuted     && <span className="room-participant-badge">🔇</span>}
+                    {p.isCameraOff && <span className="room-participant-badge">📷</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Badge conectados */}
+          <div className="room-connected-count">
+            <div className="room-connected-dot" />
+            {participantTotal} {participantTotal === 1 ? 'conectado' : 'conectados'}
+          </div>
+        </div>
+
+        {/* ── Área principal ──────────────────────────────────────── */}
+        <div className="room-main">
+
+          {/* ── Área de video ─────────────────────────────────────── */}
+          <div className="room-video-area">
+            {/* Toast de estado */}
+            <div className={`room-connection-toast${hasJoined ? ' connected' : error ? ' error' : ''}`}>
+              {hasJoined ? '● Conectado' : error ? `⚠ ${socketState}` : `⏳ ${socketState}`}
             </div>
-            <button className="secondary-btn" type="button" onClick={() => navigate('/salas')}>
-              Volver a salas
+
+            {/* Botón flotante de info */}
+            <button
+              className="room-info-fab"
+              type="button"
+              title="Información de la sala"
+              onClick={() => setInfoOpen(true)}
+              aria-label="Ver información de la sala"
+            >
+              ?
             </button>
-          </div>
 
-          {loading ? (
-            <div className="rooms-empty-state">Cargando sala...</div>
-          ) : room ? (
-            <>
-              <div className="room-info-grid">
-                <article className="room-info-card">
-                  <span className="room-info-label">Nombre</span>
-                  <strong>{room.name}</strong>
-                  <p>{room.description || 'Sin descripción registrada.'}</p>
-                </article>
-
-                <article className="room-info-card">
-                  <span className="room-info-label">ID único</span>
-                  <strong>{visibleRoomCode || room.id}</strong>
-                  {visibleRoomCode ? (
-                    <button className="link-btn" type="button" onClick={() => handleCopy(visibleRoomCode, 'ID único')}>
-                      Copiar ID
-                    </button>
-                  ) : (
-                    <p>El código está oculto. Pídeselo al anfitrión.</p>
-                  )}
-                </article>
-
-                <article className="room-info-card">
-                  <span className="room-info-label">Participantes</span>
-                  <strong>{participantTotal} / {room.maxParticipants ?? 10}</strong>
-                  <p>{room.isPrivate ? 'Sala privada' : 'Sala pública'}</p>
-                </article>
-
-                <article className="room-info-card">
-                  <span className="room-info-label">Creada</span>
-                  <strong>{formatDate(room.createdAt)}</strong>
-                  <p>Anfitrión: {room.hostName || profile?.displayName || user?.displayName || 'Usuario'}</p>
-                  <p>{isCurrentUserHost ? 'Tienes permisos de anfitrión.' : 'Entraste como invitado.'}</p>
-                </article>
-              </div>
-
-              {copied && <p className="success-msg" role="status">{copied}</p>}
-              {error && <p className="error-msg" role="alert">{error}</p>}
-            </>
-          ) : (
-            <div className="rooms-empty-state">No se encontró la sala solicitada.</div>
-          )}
-
-          <section className="participants-box" aria-labelledby="participants-title">
-            <h2 id="participants-title">Participantes conectados</h2>
-            {participants.length === 0 ? (
-              <div className="rooms-empty-state">Aún no hay participantes conectados.</div>
-            ) : (
-              <div className="participants-list compact">
-                {participants.map((participant) => {
-                  const initial = (participant.displayName || 'S').charAt(0).toUpperCase()
-                  const hasRemoteAvatar = typeof participant.photoURL === 'string' && participant.photoURL.startsWith('http')
-                  const avatarClass = hasRemoteAvatar ? '' : (participant.photoURL || 'avatar-blue')
-                  return (
-                    <article key={participant.uid} className="participant-card">
-                      <div className={`participant-avatar ${avatarClass}`} aria-hidden="true">
-                        {hasRemoteAvatar ? <img src={participant.photoURL} alt="" /> : initial}
-                      </div>
-                      <div>
-                        <h3>{participant.displayName}</h3>
-                        <p>
-                          {participant.uid === user?.uid
-                            ? (isCurrentUserHost ? 'Tú / anfitrión' : 'Tú / invitado')
-                            : 'Participante conectado'}
-                        </p>
-                        {/* Sprint 4: indicadores de estado de media */}
-                        {participant.isMuted     && <span className="media-badge muted">🔇</span>}
-                        {participant.isCameraOff && <span className="media-badge">📷</span>}
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
+            {/* Media error */}
+            {mediaError && (
+              <div className="room-media-error" role="alert">{mediaError}</div>
             )}
-          </section>
-        </section>
 
-        {/* ─── Panel derecho: video + chat ───────────────────────────── */}
-        <section className="rooms-panel chat-panel" aria-labelledby="chat-title">
-
-          {/* Sprint 4 (US-09, US-12): Grid de video */}
-          {hasJoinedRoom && (
-            <>
-              <VideoControls
-                isMuted={isMuted}
-                isCameraOff={isCameraOff}
-                onToggleMute={toggleMute}
-                onToggleCamera={toggleCamera}
-                peerReady={peerReady}
-                mediaError={mediaError}
-              />
-              <VideoGrid
-                localStream={localStream}
-                remoteStreams={remoteStreams}
-                isMuted={isMuted}
-                isCameraOff={isCameraOff}
-                displayName={profile?.displayName || user?.displayName || 'Tú'}
-              />
-            </>
-          )}
-
-          {/* Chat */}
-          <div className="chat-header-row">
-            <div>
-              <h2 id="chat-title">Chat de la sala</h2>
-              <p>Mensajería instantánea con historial persistente en Firestore.</p>
-            </div>
-            <span className={`chat-live-badge ${hasJoinedRoom ? 'online' : ''}`}>
-              {hasJoinedRoom ? 'En línea' : 'Conectando'}
-            </span>
+            {/* Grid de video */}
+            <VideoGrid
+              localStream={localStream}
+              remoteStreams={remoteStreams}
+              isMuted={isMuted}
+              isCameraOff={isCameraOff}
+              displayName={myDisplayName}
+              myUid={user?.uid}
+              joined={hasJoined || loading}
+            />
           </div>
 
-          {chatStatus    && <p className="chat-status"         role="status">{chatStatus}</p>}
-          {historyLoading && <p className="chat-history-status" role="status">Cargando historial desde Firestore...</p>}
-          {historyStatus && <p className="chat-history-status" role="status">{historyStatus}</p>}
+          {/* ── Drawer de chat ─────────────────────────────────────── */}
+          <div className={`room-chat-drawer${chatOpen ? ' open' : ''}`} aria-label="Chat de la sala">
+            <div className="room-chat-header">
+              <h3>💬 Chat</h3>
+              <button
+                className="room-chat-close"
+                type="button"
+                onClick={() => setChatOpen(false)}
+                aria-label="Cerrar chat"
+              >×</button>
+            </div>
 
-          <div className="chat-messages-shell">
             <div
-              className="chat-messages"
+              className="room-chat-messages"
               ref={chatMessagesRef}
               onScroll={handleChatScroll}
               aria-live="polite"
-              aria-relevant="additions text"
-              aria-label="Mensajes del chat de la sala"
+              aria-relevant="additions"
+              aria-label="Mensajes"
             >
               {messages.length === 0 ? (
-                <div className="chat-empty-state">
-                  <strong>Aún no hay mensajes guardados</strong>
-                  <span>El historial de Firestore se mostrará aquí al entrar o recargar.</span>
+                <div className="room-chat-empty">
+                  <span style={{ fontSize: 28 }}>💬</span>
+                  <span>Aún no hay mensajes.<br />¡Sé el primero!</span>
                 </div>
-              ) : (
-                messages.map((message) => {
-                  const isMine = message.senderUid === user?.uid
-                  return (
-                    <article
-                      key={message.id || message.clientMessageId || `${message.senderUid}-${message.createdAt}`}
-                      className={`chat-message ${isMine ? 'mine' : ''}`}
-                    >
-                      <div className="chat-message-header">
-                        <strong>{isMine ? 'Tú' : message.senderName}</strong>
-                        <span>{formatTime(message.createdAt) || 'Ahora'}</span>
-                        {message.persistedAt && <em className="message-storage-badge">DB</em>}
-                      </div>
-                      <p>{message.text}</p>
-                    </article>
-                  )
-                })
-              )}
-              <div ref={chatBottomRef} className="chat-bottom-anchor" aria-hidden="true" />
+              ) : messages.map((msg) => {
+                const mine = msg.senderUid === user?.uid
+                return (
+                  <div
+                    key={msg.id || msg.clientMessageId || `${msg.senderUid}-${msg.createdAt}`}
+                    className={`chat-msg${mine ? ' mine' : ''}`}
+                  >
+                    <div className="chat-msg-header">
+                      <span className="chat-msg-sender">{mine ? 'Tú' : msg.senderName}</span>
+                      <span className="chat-msg-time">{formatTime(msg.createdAt) || 'Ahora'}</span>
+                    </div>
+                    <div className="chat-msg-bubble">{msg.text}</div>
+                  </div>
+                )
+              })}
+              <div ref={chatBottomRef} />
             </div>
 
-            {showScrollButton && (
-              <button className="scroll-bottom-btn" type="button" onClick={() => scrollChatToBottom()}>
-                Bajar al último mensaje
+            <form className="room-chat-input-row" onSubmit={handleSend}>
+              <label htmlFor="chat-input" className="sr-only">Mensaje</label>
+              <input
+                id="chat-input"
+                className="room-chat-input"
+                type="text"
+                value={messageText}
+                onChange={(e) => setMessageText(e.target.value)}
+                placeholder={hasJoined ? 'Escribe un mensaje...' : 'Conectando...'}
+                maxLength={1000}
+                disabled={!hasJoined}
+                autoComplete="off"
+              />
+              <button
+                className="room-chat-send"
+                type="submit"
+                disabled={!canSend}
+                aria-label="Enviar mensaje"
+              >
+                ➤
               </button>
+            </form>
+          </div>
+        </div>
+
+        {/* ── Barra de controles inferior ─────────────────────────── */}
+        <div className="room-bottombar">
+          {/* Micrófono */}
+          <button
+            className={`room-ctrl-btn mic${isMuted ? ' off' : ''}`}
+            type="button"
+            onClick={toggleMute}
+            disabled={!peerReady}
+            aria-pressed={isMuted}
+            title={isMuted ? 'Activar micrófono' : 'Silenciar'}
+          >
+            <span aria-hidden="true">{isMuted ? '🔇' : '🎤'}</span>
+            {isMuted ? 'Micrófono' : 'Micrófono'}
+          </button>
+
+          {/* Cámara */}
+          <button
+            className={`room-ctrl-btn cam${isCameraOff ? ' off' : ''}`}
+            type="button"
+            onClick={toggleCamera}
+            disabled={!peerReady}
+            aria-pressed={isCameraOff}
+            title={isCameraOff ? 'Activar cámara' : 'Apagar cámara'}
+          >
+            <span aria-hidden="true">{isCameraOff ? '📷' : '🎥'}</span>
+            Cámara
+          </button>
+
+          {/* Chat toggle */}
+          <button
+            className={`room-ctrl-btn chat-toggle${chatOpen ? ' active' : ''}`}
+            type="button"
+            onClick={() => setChatOpen((v) => !v)}
+            aria-pressed={chatOpen}
+            title={chatOpen ? 'Cerrar chat' : 'Abrir chat'}
+          >
+            <span aria-hidden="true">💬</span>
+            Chat
+          </button>
+
+          {/* Salir */}
+          <button
+            className="room-ctrl-btn leave"
+            type="button"
+            onClick={() => navigate('/salas')}
+            title="Salir de la sala"
+          >
+            <span aria-hidden="true">✕</span>
+            Salir
+          </button>
+        </div>
+      </div>
+
+      {/* ── Modal de información de la sala ─────────────────────── */}
+      {infoOpen && (
+        <div
+          className="room-info-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Información de la sala"
+          onClick={(e) => { if (e.target === e.currentTarget) setInfoOpen(false) }}
+        >
+          <div className="room-info-modal">
+            <div className="room-info-modal-header">
+              <h2>ℹ Información de la sala</h2>
+              <button
+                className="room-info-close"
+                type="button"
+                onClick={() => setInfoOpen(false)}
+                aria-label="Cerrar"
+              >×</button>
+            </div>
+
+            {loading ? (
+              <p style={{ color: '#64748b', fontSize: 14 }}>Cargando información...</p>
+            ) : room ? (
+              <>
+                <div className="room-info-grid">
+                  <div className="room-info-card">
+                    <span className="room-info-card-label">Nombre</span>
+                    <span className="room-info-card-value">{room.name}</span>
+                    <span className="room-info-card-sub">{room.description || 'Sin descripción'}</span>
+                  </div>
+
+                  <div className="room-info-card">
+                    <span className="room-info-card-label">ID único</span>
+                    <span className="room-info-card-value">{visibleCode || room.id}</span>
+                    {visibleCode && (
+                      <button
+                        className="room-info-copy-btn"
+                        type="button"
+                        onClick={() => handleCopy(visibleCode, 'ID')}
+                      >
+                        Copiar ID
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="room-info-card">
+                    <span className="room-info-card-label">Participantes</span>
+                    <span className="room-info-card-value">{participantTotal} / {room.maxParticipants ?? 10}</span>
+                    <span className="room-info-card-sub">{room.isPrivate ? '🔒 Sala privada' : '🌐 Sala pública'}</span>
+                  </div>
+
+                  <div className="room-info-card">
+                    <span className="room-info-card-label">Creada</span>
+                    <span className="room-info-card-value">{formatDate(room.createdAt)}</span>
+                    <span className="room-info-card-sub">Anfitrión: {room.hostName || myDisplayName}</span>
+                  </div>
+
+                  <div className="room-info-card" style={{ gridColumn: '1 / -1' }}>
+                    <span className="room-info-card-label">Tu rol</span>
+                    <span className="room-info-card-value">{isHost ? '👑 Anfitrión' : '👤 Invitado'}</span>
+                    <span className="room-info-card-sub">Estado: {socketState}</span>
+                  </div>
+                </div>
+
+                {error && <div className="room-info-error">⚠ {error}</div>}
+                {copied && <p className="room-info-status" style={{ color: '#22c55e' }}>✓ {copied}</p>}
+              </>
+            ) : (
+              <p style={{ color: '#64748b', fontSize: 14 }}>No se encontró la sala.</p>
             )}
           </div>
-
-          <form className="chat-form" onSubmit={handleSendMessage}>
-            <label htmlFor="chat-message" className="sr-only">Mensaje</label>
-            <input
-              id="chat-message"
-              type="text"
-              value={messageText}
-              onChange={(event) => setMessageText(event.target.value)}
-              placeholder={hasJoinedRoom ? 'Escribe un mensaje...' : 'Conectando al chat...'}
-              maxLength="1000"
-              disabled={!hasJoinedRoom}
-            />
-            <button className="login-btn" type="submit" disabled={!canSendMessage}>
-              {sending ? 'Enviando...' : 'Enviar'}
-            </button>
-          </form>
-        </section>
-      </div>
+        </div>
+      )}
     </AppLayout>
   )
 }
