@@ -2,52 +2,47 @@
  * useWebRTC.js — Sprint 4 (TS-03, US-12)
  *
  * Hook que maneja toda la lógica WebRTC + PeerJS:
- *   1. Obtiene la config ICE (STUN + ExpressTURN) del servidor.
+ *   1. Usa PeerJS Cloud (peerjs.com) como servidor de señalización — gratis, sin configurar nada.
  *   2. Pide permiso de cámara/micrófono al navegador.
- *   3. Crea el Peer de PeerJS y lo registra en el servidor.
+ *   3. Crea el Peer de PeerJS y lo registra via Socket.io en el backend.
  *   4. Llama a los peers existentes y responde llamadas entrantes.
  *   5. Expone streams remotos para que VideoGrid los muestre (US-09).
  *   6. Maneja mute/cámara y sincroniza el estado con el servidor.
+ *
+ * Signaling: Socket.io (backend Render) — solo para intercambiar peerIds.
+ * Media P2P: PeerJS Cloud (0.peerjs.com) — directo entre navegadores.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Peer from 'peerjs'
-import { getIceServers, registerPeer } from '../services/realtime'
-import { REALTIME_URL } from '../services/realtime'
+import { registerPeer } from '../services/realtime'
 
-// Extrae host y puerto del REALTIME_URL para configurar PeerJS
-function parsePeerConfig(url) {
-  try {
-    const parsed = new URL(url)
-    return {
-      host: parsed.hostname,
-      port: Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 3002),
-      secure: parsed.protocol === 'https:',
-    }
-  } catch {
-    return { host: 'localhost', port: 3002, secure: false }
-  }
-}
+// ICE servers: STUN de Google (gratuito, sin configurar)
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+]
 
 export function useWebRTC({ socket, roomId, myUid, enabled }) {
-  const [localStream, setLocalStream]     = useState(null)
-  const [remoteStreams, setRemoteStreams]  = useState([]) // [{ peerId, uid, displayName, stream }]
-  const [isMuted, setIsMuted]             = useState(false)
-  const [isCameraOff, setIsCameraOff]     = useState(false)
-  const [mediaError, setMediaError]       = useState('')
-  const [peerReady, setPeerReady]         = useState(false)
+  const [localStream, setLocalStream]    = useState(null)
+  const [remoteStreams, setRemoteStreams] = useState([]) // [{ peerId, uid, displayName, stream, isMuted, isCameraOff }]
+  const [isMuted, setIsMuted]            = useState(false)
+  const [isCameraOff, setIsCameraOff]    = useState(false)
+  const [mediaError, setMediaError]      = useState('')
+  const [peerReady, setPeerReady]        = useState(false)
 
   const peerRef        = useRef(null)
   const localStreamRef = useRef(null)
   const callsRef       = useRef(new Map()) // peerId → MediaConnection
   const mountedRef     = useRef(true)
 
-  // ─── Agregar stream remoto ────────────────────────────────────────
+  // ─── Agregar stream remoto ──────────────────────────────────────
   const addRemoteStream = useCallback((peerId, uid, displayName, stream) => {
     if (!mountedRef.current) return
     setRemoteStreams((prev) => {
       const exists = prev.find((s) => s.peerId === peerId)
       if (exists) return prev
-      return [...prev, { peerId, uid, displayName, stream }]
+      return [...prev, { peerId, uid, displayName, stream, isMuted: false, isCameraOff: false }]
     })
   }, [])
 
@@ -57,14 +52,15 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
     callsRef.current.delete(peerId)
   }, [])
 
-  // ─── Llamar a un peer ─────────────────────────────────────────────
+  // ─── Llamar a un peer ──────────────────────────────────────────
   const callPeer = useCallback((peerId, uid, displayName) => {
     const peer   = peerRef.current
     const stream = localStreamRef.current
-    if (!peer || !stream || callsRef.current.has(peerId)) return
+    if (!peer || !stream || callsRef.current.has(peerId) || peerId === peer.id) return
 
     console.log(`[WebRTC] Llamando a ${displayName} (${peerId})`)
-    const call = peer.call(peerId, stream, { metadata: { uid: myUid } })
+    const call = peer.call(peerId, stream, { metadata: { uid: myUid, displayName } })
+    if (!call) return
     callsRef.current.set(peerId, call)
 
     call.on('stream', (remoteStream) => {
@@ -74,7 +70,7 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
     call.on('error', () => removeRemoteStream(peerId))
   }, [myUid, addRemoteStream, removeRemoteStream])
 
-  // ─── Inicializar PeerJS ───────────────────────────────────────────
+  // ─── Inicializar PeerJS con PeerJS Cloud ──────────────────────
   useEffect(() => {
     if (!enabled || !socket || !roomId || !myUid) return
 
@@ -82,48 +78,34 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
     let peer = null
 
     const init = async () => {
-      // 1. Obtener ICE servers del backend (STUN + ExpressTURN)
-      let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }]
-      try {
-        iceServers = await getIceServers(socket)
-        console.log('[WebRTC] ICE servers recibidos:', iceServers)
-      } catch {
-        console.warn('[WebRTC] No se pudo obtener ICE servers, usando STUN por defecto')
-      }
-
-      // 2. Pedir acceso a cámara y micrófono
+      // 1. Pedir acceso a cámara y micrófono
       let stream
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      } catch (err) {
-        // Si el navegador deniega, intentar solo audio
+      } catch {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true })
           if (mountedRef.current) setMediaError('Cámara no disponible. Conectado solo con audio.')
         } catch {
-          if (mountedRef.current) setMediaError('No se pudo acceder a cámara ni micrófono. Verifica los permisos.')
+          if (mountedRef.current) setMediaError('No se pudo acceder a cámara ni micrófono. Verifica los permisos del navegador.')
           return
         }
       }
 
-      if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return }
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
 
       localStreamRef.current = stream
       setLocalStream(stream)
 
-      // 3. Crear Peer PeerJS apuntando al servidor propio
-      const { host, port, secure } = parsePeerConfig(REALTIME_URL)
+      // 2. Crear Peer usando PeerJS Cloud (0.peerjs.com) — gratis, sin configurar
       peer = new Peer(undefined, {
-        host,
-        port,
-        path: '/peerjs',
-        secure,
-        config: { iceServers },
+        config: { iceServers: ICE_SERVERS },
         debug: 1,
+        // Sin host/port/path → usa PeerJS Cloud por defecto
       })
       peerRef.current = peer
 
-      // 4. Cuando PeerJS asigna un ID, registrarlo en el servidor
+      // 3. Cuando PeerJS Cloud asigna un ID, registrarlo via Socket.io
       peer.on('open', (peerId) => {
         if (!mountedRef.current) return
         console.log(`[PeerJS] Peer listo con ID: ${peerId}`)
@@ -131,22 +113,37 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
         setPeerReady(true)
       })
 
-      // 5. Responder llamadas entrantes
+      // 4. Responder llamadas entrantes
       peer.on('call', (call) => {
         if (!localStreamRef.current) return
         call.answer(localStreamRef.current)
-        const callerUid = call.metadata?.uid || call.peer
+        const callerUid         = call.metadata?.uid         || call.peer
+        const callerDisplayName = call.metadata?.displayName || callerUid
 
         call.on('stream', (remoteStream) => {
-          addRemoteStream(call.peer, callerUid, callerUid, remoteStream)
+          addRemoteStream(call.peer, callerUid, callerDisplayName, remoteStream)
         })
         call.on('close', () => removeRemoteStream(call.peer))
+        call.on('error', () => removeRemoteStream(call.peer))
         callsRef.current.set(call.peer, call)
       })
 
       peer.on('error', (err) => {
-        console.error('[PeerJS] Error:', err)
-        if (mountedRef.current) setMediaError(`Error de conexión P2P: ${err.type}`)
+        console.error('[PeerJS] Error:', err.type, err)
+        if (mountedRef.current) {
+          if (err.type === 'network' || err.type === 'server-error') {
+            setMediaError('Error conectando con el servidor P2P. Verifica tu conexión.')
+          } else if (err.type === 'peer-unavailable') {
+            console.warn('[PeerJS] Peer no disponible, puede que ya se desconectó.')
+          } else {
+            setMediaError(`Error P2P: ${err.type}`)
+          }
+        }
+      })
+
+      peer.on('disconnected', () => {
+        console.warn('[PeerJS] Desconectado del servidor de señalización. Reconectando...')
+        peer?.reconnect()
       })
     }
 
@@ -154,22 +151,19 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
 
     return () => {
       mountedRef.current = false
-      // Cerrar todas las llamadas activas
       callsRef.current.forEach((call) => call.close())
       callsRef.current.clear()
-      // Detener stream local
       localStreamRef.current?.getTracks().forEach((t) => t.stop())
       localStreamRef.current = null
-      // Destruir peer
       peerRef.current?.destroy()
       peerRef.current = null
       setLocalStream(null)
       setRemoteStreams([])
       setPeerReady(false)
     }
-  }, [enabled, socket, roomId, myUid, addRemoteStream, removeRemoteStream])
+  }, [enabled, socket, roomId, myUid, addRemoteStream, removeRemoteStream]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Escuchar eventos Socket.io de PeerJS ────────────────────────
+  // ─── Escuchar eventos Socket.io ───────────────────────────────
   useEffect(() => {
     if (!socket || !peerReady) return
 
@@ -181,10 +175,9 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
 
     // Participante salió → cerrar su stream
     const onParticipantLeft = ({ peerId }) => {
-      if (peerId) {
-        callsRef.current.get(peerId)?.close()
-        removeRemoteStream(peerId)
-      }
+      if (!peerId) return
+      callsRef.current.get(peerId)?.close()
+      removeRemoteStream(peerId)
     }
 
     // Actualización de estado de media (mute/cámara)
@@ -205,8 +198,7 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
     }
   }, [socket, peerReady, myUid, callPeer, removeRemoteStream])
 
-  // ─── Llamar a participantes que ya estaban en la sala ────────────
-  // Se activa cuando room_joined llega con participantes que ya tienen peerId
+  // ─── Llamar a participantes que ya estaban en la sala ─────────
   const callExistingPeers = useCallback((participants) => {
     participants.forEach(({ uid, peerId, displayName }) => {
       if (uid === myUid || !peerId) return
@@ -214,7 +206,7 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
     })
   }, [myUid, callPeer])
 
-  // ─── Toggle mute ─────────────────────────────────────────────────
+  // ─── Toggle mute ──────────────────────────────────────────────
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current
     if (!stream) return
@@ -224,7 +216,7 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
     socket?.emit('media_state_change', { roomId, isMuted: newMuted, isCameraOff })
   }, [isMuted, isCameraOff, socket, roomId])
 
-  // ─── Toggle cámara ───────────────────────────────────────────────
+  // ─── Toggle cámara ────────────────────────────────────────────
   const toggleCamera = useCallback(() => {
     const stream = localStreamRef.current
     if (!stream) return

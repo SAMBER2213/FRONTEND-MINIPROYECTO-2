@@ -1,14 +1,18 @@
 import { io } from 'socket.io-client'
 
-const REALTIME_URL = import.meta.env.VITE_REALTIME_API_URL || 'http://localhost:3002'
+export const REALTIME_URL = import.meta.env.VITE_REALTIME_API_URL || 'http://localhost:3002'
 
+// polling primero para garantizar conexión en Render,
+// luego upgrade automático a WebSocket si el servidor lo soporta
 const SOCKET_OPTIONS = {
-  transports: ['websocket', 'polling'],
+  transports: ['polling', 'websocket'],
   autoConnect: true,
   reconnection: true,
-  reconnectionAttempts: 8,
-  reconnectionDelay: 700,
-  timeout: 10000,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  timeout: 20000,
+  withCredentials: false,
 }
 
 let socketInstance = null
@@ -38,22 +42,9 @@ export function joinRoom(socket, roomId, token, roomCode = null) {
 }
 
 /**
- * Sprint 4 (TS-03): Solicita al backend la configuración ICE (STUN + ExpressTURN).
- * Devuelve una promesa que resuelve con el array RTCIceServer[].
- */
-export function getIceServers(socket) {
-  return new Promise((resolve) => {
-    socket.once('ice_servers', ({ iceServers }) => resolve(iceServers))
-    socket.emit('get_ice_servers')
-  })
-}
-
-/**
- * Sprint 4 (TS-03): Registra el peerId de PeerJS en el servidor
+ * Registra el peerId de PeerJS en el servidor
  * para que los demás participantes puedan iniciar llamadas.
  */
 export function registerPeer(socket, roomId, peerId) {
   socket.emit('register_peer', { roomId, peerId })
 }
-
-export { REALTIME_URL }
