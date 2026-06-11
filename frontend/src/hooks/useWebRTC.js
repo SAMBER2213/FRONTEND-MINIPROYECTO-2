@@ -4,6 +4,8 @@
  * Hook que maneja toda la lógica WebRTC + PeerJS.
  * Recibe initialCameraOff / initialMuted desde el PreJoinModal
  * y aplica esos valores al stream en cuanto lo obtiene.
+ *
+ * Fix: propaga displayName y photoURL correctamente por participante.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Peer from 'peerjs'
@@ -15,10 +17,9 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
 ]
 
-export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = false, initialMuted = false }) {
+export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = false, initialMuted = false, myDisplayName, myPhotoURL }) {
   const [localStream,   setLocalStream]   = useState(null)
   const [remoteStreams, setRemoteStreams]  = useState([])
-  // Inicializar desde las preferencias del modal
   const [isMuted,      setIsMuted]        = useState(initialMuted)
   const [isCameraOff,  setIsCameraOff]    = useState(initialCameraOff)
   const [mediaError,   setMediaError]     = useState('')
@@ -30,12 +31,12 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
   const mountedRef     = useRef(true)
 
   // ─── Agregar stream remoto ──────────────────────────────────────
-  const addRemoteStream = useCallback((peerId, uid, displayName, stream) => {
+  const addRemoteStream = useCallback((peerId, uid, displayName, stream, photoURL) => {
     if (!mountedRef.current) return
     setRemoteStreams((prev) => {
       const exists = prev.find((s) => s.peerId === peerId)
       if (exists) return prev
-      return [...prev, { peerId, uid, displayName, stream, isMuted: false, isCameraOff: false }]
+      return [...prev, { peerId, uid, displayName, stream, isMuted: false, isCameraOff: false, photoURL: photoURL || null }]
     })
   }, [])
 
@@ -46,19 +47,19 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
   }, [])
 
   // ─── Llamar a un peer ──────────────────────────────────────────
-  const callPeer = useCallback((peerId, uid, displayName) => {
+  const callPeer = useCallback((peerId, uid, displayName, photoURL) => {
     const peer   = peerRef.current
     const stream = localStreamRef.current
     if (!peer || !stream || callsRef.current.has(peerId) || peerId === peer.id) return
 
-    const call = peer.call(peerId, stream, { metadata: { uid: myUid, displayName } })
+    const call = peer.call(peerId, stream, { metadata: { uid: myUid, displayName: myDisplayName, photoURL: myPhotoURL } })
     if (!call) return
     callsRef.current.set(peerId, call)
 
-    call.on('stream', (remoteStream) => addRemoteStream(peerId, uid, displayName, remoteStream))
+    call.on('stream', (remoteStream) => addRemoteStream(peerId, uid, displayName, remoteStream, photoURL))
     call.on('close',  () => removeRemoteStream(peerId))
     call.on('error',  () => removeRemoteStream(peerId))
-  }, [myUid, addRemoteStream, removeRemoteStream])
+  }, [myUid, myDisplayName, myPhotoURL, addRemoteStream, removeRemoteStream])
 
   // ─── Inicializar cuando enabled=true ─────────────────────────
   useEffect(() => {
@@ -83,13 +84,11 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
 
       if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
 
-      // ── Aplicar preferencias del modal de pre-entrada ──────────
       stream.getAudioTracks().forEach((t) => { t.enabled = !initialMuted })
       stream.getVideoTracks().forEach((t) => { t.enabled = !initialCameraOff })
 
       localStreamRef.current = stream
       setLocalStream(stream)
-      // Reflejar estado inicial en el hook
       setIsMuted(initialMuted)
       setIsCameraOff(initialCameraOff)
 
@@ -101,7 +100,7 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
 
       peer.on('open', (peerId) => {
         if (!mountedRef.current) return
-        registerPeer(socket, roomId, peerId)
+        registerPeer(socket, roomId, peerId, myDisplayName, myPhotoURL)
         setPeerReady(true)
       })
 
@@ -110,8 +109,9 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
         call.answer(localStreamRef.current)
         const callerUid         = call.metadata?.uid         || call.peer
         const callerDisplayName = call.metadata?.displayName || callerUid
+        const callerPhotoURL    = call.metadata?.photoURL    || null
 
-        call.on('stream', (remoteStream) => addRemoteStream(call.peer, callerUid, callerDisplayName, remoteStream))
+        call.on('stream', (remoteStream) => addRemoteStream(call.peer, callerUid, callerDisplayName, remoteStream, callerPhotoURL))
         call.on('close',  () => removeRemoteStream(call.peer))
         call.on('error',  () => removeRemoteStream(call.peer))
         callsRef.current.set(call.peer, call)
@@ -152,9 +152,9 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
   useEffect(() => {
     if (!socket || !peerReady) return
 
-    const onPeerRegistered = ({ uid, peerId, displayName }) => {
+    const onPeerRegistered = ({ uid, peerId, displayName, photoURL }) => {
       if (uid === myUid) return
-      callPeer(peerId, uid, displayName)
+      callPeer(peerId, uid, displayName, photoURL)
     }
 
     const onParticipantLeft = ({ peerId }) => {
@@ -182,9 +182,9 @@ export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = f
 
   // ─── Llamar peers existentes ──────────────────────────────────
   const callExistingPeers = useCallback((participants) => {
-    participants.forEach(({ uid, peerId, displayName }) => {
+    participants.forEach(({ uid, peerId, displayName, photoURL }) => {
       if (uid === myUid || !peerId) return
-      callPeer(peerId, uid, displayName)
+      callPeer(peerId, uid, displayName, photoURL)
     })
   }, [myUid, callPeer])
 

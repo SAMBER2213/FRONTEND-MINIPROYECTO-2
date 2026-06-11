@@ -396,46 +396,51 @@
   white-space: nowrap;
 }
 
+.room-ctrl-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .room-ctrl-btn:active {
   transform: scale(0.96);
 }
 
-/* Micrófono */
+/* Micrófono activo = verde */
 .room-ctrl-btn.mic {
-  background: #1d4ed8;
-  color: #fff;
+  background: #166534;
+  color: #4ade80;
 }
-
 .room-ctrl-btn.mic:hover {
-  background: #1e40af;
+  background: #15803d;
 }
 
+/* Micrófono off = rojo */
 .room-ctrl-btn.mic.off {
-  background: #dc2626;
-  color: #fff;
+  background: #7f1d1d;
+  color: #fca5a5;
 }
-
 .room-ctrl-btn.mic.off:hover {
-  background: #b91c1c;
+  background: #991b1b;
 }
 
-/* Cámara */
+/* Cámara activa = verde */
 .room-ctrl-btn.cam {
-  background: #1d4ed8;
-  color: #fff;
+  background: #166534;
+  color: #4ade80;
 }
-
 .room-ctrl-btn.cam:hover {
-  background: #1e40af;
+  background: #15803d;
 }
 
+/* Cámara off = rojo */
 .room-ctrl-btn.cam.off {
-  background: #dc2626;
-  color: #fff;
+  background: #7f1d1d;
+  color: #fca5a5;
 }
-
 .room-ctrl-btn.cam.off:hover {
-  background: #b91c1c;
+  background: #991b1b;
 }
 
 /* Chat toggle */
@@ -443,11 +448,9 @@
   background: #374151;
   color: #e2e8f0;
 }
-
 .room-ctrl-btn.chat-toggle:hover {
   background: #4b5563;
 }
-
 .room-ctrl-btn.chat-toggle.active {
   background: #065f46;
   color: #6ee7b7;
@@ -458,7 +461,6 @@
   background: #dc2626;
   color: #fff;
 }
-
 .room-ctrl-btn.leave:hover {
   background: #b91c1c;
 }

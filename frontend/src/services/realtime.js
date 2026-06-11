@@ -44,7 +44,9 @@ export function joinRoom(socket, roomId, token, roomCode = null) {
 /**
  * Registra el peerId de PeerJS en el servidor
  * para que los demás participantes puedan iniciar llamadas.
+ * Incluye displayName y photoURL para que cada participante vea
+ * el nombre y foto correctos de los demás.
  */
-export function registerPeer(socket, roomId, peerId) {
-  socket.emit('register_peer', { roomId, peerId })
+export function registerPeer(socket, roomId, peerId, displayName, photoURL) {
+  socket.emit('register_peer', { roomId, peerId, displayName: displayName || null, photoURL: photoURL || null })
 }

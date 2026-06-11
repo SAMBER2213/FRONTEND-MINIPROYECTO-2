@@ -110,7 +110,7 @@ function RoomDetail() {
     mediaError, peerReady,
     toggleMute, toggleCamera,
     callExistingPeers,
-  } = useWebRTC({ socket, roomId, myUid: user?.uid, enabled: hasJoined && !showPreJoin, initialCameraOff: !initialMedia.cameraOn, initialMuted: !initialMedia.micOn })
+  } = useWebRTC({ socket, roomId, myUid: user?.uid, enabled: hasJoined && !showPreJoin, initialCameraOff: !initialMedia.cameraOn, initialMuted: !initialMedia.micOn, myDisplayName: profile?.displayName || user?.displayName || 'Yo', myPhotoURL: profile?.photoURL || user?.photoURL || null })
 
   /* ── Socket: cargar sala y conectar ────────────────────────────── */
   useEffect(() => {
@@ -308,8 +308,8 @@ function RoomDetail() {
                   </div>
                   <span className="room-participant-name">{isMe ? 'Tú' : p.displayName}</span>
                   <div className="room-participant-badges">
-                    {p.isMuted     && <span className="room-participant-badge">🔇</span>}
-                    {p.isCameraOff && <span className="room-participant-badge">📷</span>}
+                    {p.isMuted     && <span className="room-participant-badge" title="Micrófono apagado"><svg viewBox="0 0 24 24" fill="none" width="11" height="11"><rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor" opacity="0.7"/><path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/><line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg></span>}
+                    {p.isCameraOff && <span className="room-participant-badge" title="Cámara apagada"><svg viewBox="0 0 24 24" fill="none" width="11" height="11"><rect x="2" y="6" width="14" height="12" rx="2" fill="currentColor" opacity="0.7"/><path d="M16 10l5-3v10l-5-3V10z" fill="currentColor" opacity="0.7"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg></span>}
                   </div>
                 </div>
               )
@@ -358,6 +358,7 @@ function RoomDetail() {
               displayName={myDisplayName}
               myUid={user?.uid}
               joined={hasJoined}
+              myPhotoURL={profile?.photoURL || user?.photoURL || null}
             />
           </div>
 
@@ -440,8 +441,14 @@ function RoomDetail() {
             aria-pressed={isMuted}
             title={isMuted ? 'Activar micrófono' : 'Silenciar'}
           >
-            <span aria-hidden="true">{isMuted ? '🔇' : '🎤'}</span>
-            {isMuted ? 'Micrófono' : 'Micrófono'}
+            <span className="room-ctrl-icon" aria-hidden="true">
+              {isMuted ? (
+                <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor" opacity="0.7"/><path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/><line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.7"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><rect x="9" y="2" width="6" height="11" rx="3" fill="currentColor"/><path d="M5 10a7 7 0 0 0 14 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/><line x1="9" y1="21" x2="15" y2="21" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              )}
+            </span>
+            Micrófono
           </button>
 
           {/* Cámara */}
@@ -453,7 +460,13 @@ function RoomDetail() {
             aria-pressed={isCameraOff}
             title={isCameraOff ? 'Activar cámara' : 'Apagar cámara'}
           >
-            <span aria-hidden="true">{isCameraOff ? '📷' : '🎥'}</span>
+            <span className="room-ctrl-icon" aria-hidden="true">
+              {isCameraOff ? (
+                <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><rect x="2" y="6" width="14" height="12" rx="2" fill="currentColor" opacity="0.7"/><path d="M16 10l5-3v10l-5-3V10z" fill="currentColor" opacity="0.7"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><rect x="2" y="6" width="14" height="12" rx="2" fill="currentColor"/><path d="M16 10l5-3v10l-5-3V10z" fill="currentColor"/></svg>
+              )}
+            </span>
             Cámara
           </button>
 
@@ -465,7 +478,9 @@ function RoomDetail() {
             aria-pressed={chatOpen}
             title={chatOpen ? 'Cerrar chat' : 'Abrir chat'}
           >
-            <span aria-hidden="true">💬</span>
+            <span className="room-ctrl-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M20 2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4l4 4 4-4h4a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z" fill="currentColor" opacity="0.85"/></svg>
+            </span>
             Chat
           </button>
 
@@ -476,7 +491,9 @@ function RoomDetail() {
             onClick={() => navigate('/salas')}
             title="Salir de la sala"
           >
-            <span aria-hidden="true">✕</span>
+            <span className="room-ctrl-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+            </span>
             Salir
           </button>
         </div>
