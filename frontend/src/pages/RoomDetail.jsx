@@ -6,6 +6,7 @@ import { getApiErrorMessage, getRoomById, getRoomMessages } from '../services/ap
 import { createRealtimeClient, joinRoom } from '../services/realtime'
 import { VideoGrid } from '../components/VideoGrid'
 import { useWebRTC } from '../hooks/useWebRTC'
+import { PreJoinModal } from '../components/PreJoinModal'
 import '../styles/RoomDetail.css'
 
 /* ── Helpers ─────────────────────────────────────────────────────── */
@@ -61,6 +62,10 @@ function RoomDetail() {
   const chatBottomRef        = useRef(null)
   const shouldStickRef       = useRef(true)
 
+  /* ── Pre-join modal ────────────────────────────────────────────── */
+  const [showPreJoin,     setShowPreJoin]     = useState(true)
+  const [initialMedia,    setInitialMedia]    = useState({ cameraOn: true, micOn: true })
+
   /* ── Estado de sala y conexión ─────────────────────────────────── */
   const [room,            setRoom]           = useState(null)
   const [participants,    setParticipants]    = useState([])
@@ -105,7 +110,7 @@ function RoomDetail() {
     mediaError, peerReady,
     toggleMute, toggleCamera,
     callExistingPeers,
-  } = useWebRTC({ socket, roomId, myUid: user?.uid, enabled: hasJoined })
+  } = useWebRTC({ socket, roomId, myUid: user?.uid, enabled: hasJoined && !showPreJoin, initialCameraOff: !initialMedia.cameraOn, initialMuted: !initialMedia.micOn })
 
   /* ── Socket: cargar sala y conectar ────────────────────────────── */
   useEffect(() => {
@@ -249,9 +254,28 @@ function RoomDetail() {
     shouldStickRef.current = (c.scrollHeight - c.scrollTop - c.clientHeight) < 80
   }
 
+  /* ── Pre-join handlers ─────────────────────────────────────────── */
+  const handlePreJoinConfirm = ({ cameraOn, micOn }) => {
+    setInitialMedia({ cameraOn, micOn })
+    setShowPreJoin(false)
+  }
+
+  const handlePreJoinCancel = () => {
+    navigate('/salas')
+  }
+
   /* ═══════════════════════════════════════════════════════════════ */
   return (
     <AppLayout title={room?.name || 'Sala de estudio'} subtitle="">
+      {/* ── Modal de pre-entrada (preview de cámara) ──────────── */}
+      {showPreJoin && (
+        <PreJoinModal
+          roomName={room?.name || 'Sala de estudio'}
+          onJoin={handlePreJoinConfirm}
+          onCancel={handlePreJoinCancel}
+        />
+      )}
+
       {/* ── Shell principal ─────────────────────────────────────── */}
       <div className="room-shell">
 

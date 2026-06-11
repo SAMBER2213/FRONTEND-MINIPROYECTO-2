@@ -23,11 +23,11 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
 ]
 
-export function useWebRTC({ socket, roomId, myUid, enabled }) {
+export function useWebRTC({ socket, roomId, myUid, enabled, initialCameraOff = false, initialMuted = false }) {
   const [localStream, setLocalStream]    = useState(null)
   const [remoteStreams, setRemoteStreams] = useState([]) // [{ peerId, uid, displayName, stream, isMuted, isCameraOff }]
-  const [isMuted, setIsMuted]            = useState(false)
-  const [isCameraOff, setIsCameraOff]    = useState(false)
+  const [isMuted, setIsMuted]            = useState(initialMuted)
+  const [isCameraOff, setIsCameraOff]    = useState(initialCameraOff)
   const [mediaError, setMediaError]      = useState('')
   const [peerReady, setPeerReady]        = useState(false)
 
@@ -93,6 +93,10 @@ export function useWebRTC({ socket, roomId, myUid, enabled }) {
       }
 
       if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
+
+      // Aplicar preferencias iniciales del modal de pre-entrada
+      stream.getAudioTracks().forEach((t) => { t.enabled = !initialMuted })
+      stream.getVideoTracks().forEach((t) => { t.enabled = !initialCameraOff })
 
       localStreamRef.current = stream
       setLocalStream(stream)
