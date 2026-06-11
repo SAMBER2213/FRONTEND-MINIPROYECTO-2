@@ -250,10 +250,6 @@ function Rooms() {
       <div className="rooms-grid rooms-management-grid">
         <section className="rooms-panel join-room-panel" aria-labelledby="join-room-title">
           <h2 id="join-room-title">Unirse a una sala</h2>
-          <p>
-            Pega el ID único o el código corto que te compartió el anfitrión. Las salas privadas
-            requieren el código válido.
-          </p>
 
           <form className="rooms-form join-room-form" onSubmit={handleJoinRoom} noValidate>
             <div className="input-group">
@@ -278,19 +274,12 @@ function Rooms() {
             </button>
           </form>
 
-          <div className="room-note-card" role="note">
-            <h3>Criterio C1</h3>
-            <p>
-              Editar y eliminar están bloqueados para invitados. Unirse valida el ID/código antes de entrar.
-            </p>
-          </div>
         </section>
 
         <section className="rooms-panel rooms-main-panel" aria-labelledby="my-rooms-title">
           <div className="rooms-topbar">
             <div>
               <h2 id="my-rooms-title">Mis salas</h2>
-              <p>Salas creadas por ti. Como anfitrión puedes editarlas o eliminarlas.</p>
             </div>
             <div className="rooms-topbar-actions">
               <button className="secondary-btn" type="button" onClick={loadRooms} disabled={loadingRooms}>
