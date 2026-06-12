@@ -36,13 +36,6 @@ export function useWebRTC({
   const isMutedRef        = useRef(initialMuted)
   const isCameraOffRef    = useRef(initialCameraOff)
 
-  useEffect(() => {
-    isMutedRef.current = initialMuted
-    isCameraOffRef.current = initialCameraOff
-    setIsMuted(initialMuted)
-    setIsCameraOff(initialCameraOff)
-  }, [initialMuted, initialCameraOff])
-
   const addRemoteStream = useCallback((peerId, uid, displayName, stream, photoURL, isScreen = false) => {
     if (!mountedRef.current) return
     setRemoteStreams((prev) => {

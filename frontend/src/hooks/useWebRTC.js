@@ -24,6 +24,18 @@ export function useWebRTC({
   const [remoteStreams,   setRemoteStreams]    = useState([])
   const [isMuted,         setIsMuted]         = useState(initialMuted)
   const [isCameraOff,     setIsCameraOff]     = useState(initialCameraOff)
+
+  // Sincronizar estado visual cuando enabled cambia a true (los useState solo
+  // toman el valor inicial en el primer render; si el hook ya existía con
+  // enabled=false, los valores iniciales de la sala deben aplicarse aquí).
+  useEffect(() => {
+    if (enabled) {
+      setIsMuted(initialMuted)
+      setIsCameraOff(initialCameraOff)
+      isMutedRef.current = initialMuted
+      isCameraOffRef.current = initialCameraOff
+    }
+  }, [enabled]) // eslint-disable-line react-hooks/exhaustive-deps
   const [mediaError,      setMediaError]      = useState('')
   const [peerReady,       setPeerReady]       = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
