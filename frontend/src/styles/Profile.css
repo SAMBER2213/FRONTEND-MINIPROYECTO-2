@@ -127,9 +127,10 @@
 }
 
 .avatar-options {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px;
+  align-items: center;
 }
 
 .avatar-option {
@@ -144,9 +145,24 @@
   cursor: pointer;
 }
 
+.avatar-option.avatar-option-icon {
+  justify-content: center;
+  padding: 6px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
 .avatar-option:has(input:checked) {
   border-color: #2563eb;
   background: #eff6ff;
+}
+
+.avatar-option.avatar-option-icon:has(input:checked) {
+  border-color: #fff;
+  background: transparent;
+  box-shadow: 0 0 0 3px #2563eb;
 }
 
 .avatar-option span {

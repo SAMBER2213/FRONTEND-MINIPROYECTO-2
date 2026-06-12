@@ -173,7 +173,7 @@ function Profile() {
               )}
 
               {avatarOptions.map((avatar) => (
-                <label key={avatar.id} className={`avatar-option ${avatar.value}`}>
+                <label key={avatar.id} className={`avatar-option avatar-option-icon ${avatar.value}`} title={avatar.label} aria-label={avatar.label}>
                   <input
                     type="radio"
                     name="avatar"
@@ -182,7 +182,6 @@ function Profile() {
                     onChange={(event) => setPhotoURL(event.target.value)}
                   />
                   <span aria-hidden="true">{previewInitial}</span>
-                  {avatar.label}
                 </label>
               ))}
             </div>
