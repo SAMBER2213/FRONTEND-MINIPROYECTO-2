@@ -110,48 +110,7 @@ function ScreenShareMiniWindow({ onStop, onReturn, onHide, roomName }) {
   )
 }
 
-/* ── Screen Share Picker ─────────────────────────────────────────── */
-function ScreenSharePicker({ onStart, onClose }) {
-  return (
-    <div className="screen-picker-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="screen-picker-modal">
-        <div className="screen-picker-header">
-          <h3>Compartir pantalla</h3>
-          <button className="screen-picker-close" onClick={onClose}>×</button>
-        </div>
-        <p className="screen-picker-hint">
-          Al hacer clic en "Compartir", el navegador te permitirá elegir qué compartir
-          (toda la pantalla, una ventana o una pestaña).
-        </p>
-        <div className="screen-picker-options">
-          <button className="screen-picker-opt" onClick={() => onStart('screen')}>
-            <svg viewBox="0 0 24 24" fill="none" width="32" height="32">
-              <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/>
-              <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            <span>Toda la pantalla</span>
-          </button>
-          <button className="screen-picker-opt" onClick={() => onStart('window')}>
-            <svg viewBox="0 0 24 24" fill="none" width="32" height="32">
-              <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="2"/>
-              <path d="M3 9h18" stroke="currentColor" strokeWidth="2"/>
-            </svg>
-            <span>Una ventana</span>
-          </button>
-          <button className="screen-picker-opt" onClick={() => onStart('browser')}>
-            <svg viewBox="0 0 24 24" fill="none" width="32" height="32">
-              <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" strokeWidth="2"/>
-              <circle cx="6" cy="8" r="1" fill="currentColor"/>
-              <circle cx="10" cy="8" r="1" fill="currentColor"/>
-              <path d="M2 11h20" stroke="currentColor" strokeWidth="1.5"/>
-            </svg>
-            <span>Una pestaña</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+
 
 /* ── Floating PiP window when tab is hidden ──────────────────────── */
 function FloatingCallWindow({ roomName, isMuted, isCameraOff, onReturn, onLeave, onToggleMute, onToggleCam, peerReady }) {
@@ -220,9 +179,9 @@ function RoomDetail() {
   const [chatOpen,            setChatOpen]            = useState(false)
   const [infoOpen,            setInfoOpen]            = useState(false)
   const [copied,              setCopied]              = useState('')
-  const [showScreenPicker,    setShowScreenPicker]    = useState(false)
   const [miniWindowVisible,   setMiniWindowVisible]   = useState(true)
   const [isTabHidden,         setIsTabHidden]         = useState(false)
+  const [sharingUid,          setSharingUid]          = useState(null)
 
   /* ── Scroll ──────────────────────────────────────────────────── */
   const scrollToBottom = useCallback((behavior = 'smooth') => {
@@ -344,6 +303,13 @@ function RoomDetail() {
           playTone('leave')
         })
 
+        socketInst.on('media_state_update', (p) => {
+          if (!mounted) return
+          if (typeof p.isSharingScreen === 'boolean') {
+            setSharingUid(p.isSharingScreen ? p.uid : null)
+          }
+        })
+
         socketInst.on('new_message',    (msg) => { if (!mounted) return; setMessages((prev) => appendUnique(prev, msg)); setSending(false); shouldStickRef.current = true })
         socketInst.on('message_saved',  () => { if (mounted) setSending(false) })
         socketInst.on('message_failed', (p) => { if (mounted) { setSending(false); setError(p?.message || 'Error al guardar.') } })
@@ -374,18 +340,13 @@ function RoomDetail() {
   }, [peerReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Screen share ────────────────────────────────────────────── */
-  const handleScreenShareClick = () => {
+  const handleScreenShareClick = async () => {
     if (isScreenSharing) {
       stopScreenShare()
     } else {
-      setShowScreenPicker(true)
+      await startScreenShare()
+      setMiniWindowVisible(true)
     }
-  }
-
-  const handleStartShare = async () => {
-    setShowScreenPicker(false)
-    await startScreenShare()
-    setMiniWindowVisible(true)
   }
 
   /* ── Derived ─────────────────────────────────────────────────── */
@@ -441,14 +402,6 @@ function RoomDetail() {
           roomName={room?.name || 'Sala de estudio'}
           onJoin={handlePreJoinConfirm}
           onCancel={handlePreJoinCancel}
-        />
-      )}
-
-      {/* Screen share picker */}
-      {showScreenPicker && (
-        <ScreenSharePicker
-          onStart={handleStartShare}
-          onClose={() => setShowScreenPicker(false)}
         />
       )}
 
@@ -533,6 +486,8 @@ function RoomDetail() {
               myUid={user?.uid}
               joined={hasJoined}
               myPhotoURL={profile?.photoURL || user?.photoURL || null}
+              isScreenSharing={isScreenSharing}
+              sharingUid={sharingUid}
             />
           </div>
 

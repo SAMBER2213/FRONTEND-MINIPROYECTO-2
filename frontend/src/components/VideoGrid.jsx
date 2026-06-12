@@ -1,6 +1,8 @@
 /**
- * VideoGrid.jsx — con Screen Share, pin y fullscreen estilo Google Meet
- * Fix: iconos de mic/cam reflejan estado real desde el inicio
+ * VideoGrid.jsx
+ * Con replaceTrack para screen share: el participante que comparte pantalla
+ * se resalta en un tile grande. Los demás ven su pantalla en ese tile.
+ * Fix iconos: isMuted/isCameraOff vienen del estado real del servidor.
  */
 import { useEffect, useRef, useState, useCallback } from 'react'
 import '../styles/VideoGrid.css'
@@ -52,9 +54,7 @@ function useVoiceActivity(stream, isMuted) {
 
   useEffect(() => {
     if (!stream || isMuted) { setSpeaking(false); return }
-    const audioTracks = stream.getAudioTracks()
-    if (!audioTracks.length) return
-
+    if (!stream.getAudioTracks().length) return
     let mounted = true
     try {
       const ctx      = new (window.AudioContext || window.webkitAudioContext)()
@@ -64,11 +64,9 @@ function useVoiceActivity(stream, isMuted) {
       analyser.smoothingTimeConstant = 0.7
       source.connect(analyser)
       refs.current = { ctx, source, analyser }
-
       const data = new Uint8Array(analyser.frequencyBinCount)
       const THRESH = 14, DEB = 4
       let above = 0, below = 0
-
       const loop = () => {
         if (!mounted) return
         analyser.getByteFrequencyData(data)
@@ -79,7 +77,6 @@ function useVoiceActivity(stream, isMuted) {
       }
       refs.current.raf = requestAnimationFrame(loop)
     } catch { /**/ }
-
     return () => {
       mounted = false
       if (refs.current.raf) cancelAnimationFrame(refs.current.raf)
@@ -87,59 +84,11 @@ function useVoiceActivity(stream, isMuted) {
       setSpeaking(false)
     }
   }, [stream, isMuted])
-
   return speaking
 }
 
-/* ── Screen Share Tile ───────────────────────────────────────────── */
-function ScreenTile({ stream, displayName, onPin, onFullscreen, isPinned }) {
-  const videoRef = useRef(null)
-
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
-    video.srcObject = stream || null
-    if (stream) video.play().catch(() => {})
-  }, [stream])
-
-  return (
-    <div className="vg-tile vg-screen-tile">
-      <video
-        ref={videoRef}
-        className="vg-video vg-visible vg-screen-video"
-        autoPlay
-        playsInline
-        muted
-      />
-      <div className="vg-screen-label">
-        <svg viewBox="0 0 24 24" fill="none" width="14" height="14">
-          <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/>
-          <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        </svg>
-        {displayName} está compartiendo pantalla
-      </div>
-      <div className="vg-screen-actions">
-        <button
-          className={`vg-screen-btn${isPinned ? ' active' : ''}`}
-          onClick={onPin}
-          title={isPinned ? 'Desfijar' : 'Fijar pantalla'}
-        >
-          {isPinned ? '📌 Fijada' : '📌 Fijar'}
-        </button>
-        <button className="vg-screen-btn" onClick={onFullscreen} title="Pantalla completa">
-          <svg viewBox="0 0 24 24" fill="none" width="12" height="12">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"
-              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          Pantalla completa
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/* ── Video Tile ──────────────────────────────────────────────────── */
-function VideoTile({ stream, displayName, uid, isMuted, isCameraOff, isLocal, photoURL }) {
+/* ── Video tile ──────────────────────────────────────────────────── */
+function VideoTile({ stream, displayName, uid, isMuted, isCameraOff, isLocal, photoURL, isSharing, onFullscreen }) {
   const videoRef = useRef(null)
   const speaking = useVoiceActivity(stream, isMuted)
   const showCam  = Boolean(stream && !isCameraOff)
@@ -156,14 +105,14 @@ function VideoTile({ stream, displayName, uid, isMuted, isCameraOff, isLocal, ph
   }, [stream])
 
   return (
-    <div className={`vg-tile ${isLocal ? 'vg-local' : ''} ${voiceCls}`}>
+    <div className={`vg-tile ${isLocal ? 'vg-local' : ''} ${voiceCls} ${isSharing ? 'vg-sharing' : ''}`}>
       <video
         ref={videoRef}
         className={`vg-video${showCam ? ' vg-visible' : ''}`}
         autoPlay playsInline muted={isLocal}
-        aria-label={`Video de ${displayName}`}
+        style={isSharing ? { transform: 'none', objectFit: 'contain' } : undefined}
       />
-      {!showCam && (
+      {!showCam && !isSharing && (
         <div className={`vg-avatar-wrap ${!hasPhoto ? color : ''}`} aria-hidden="true">
           {hasPhoto
             ? <img src={photoURL} alt={displayName} className="vg-avatar-photo" />
@@ -171,15 +120,31 @@ function VideoTile({ stream, displayName, uid, isMuted, isCameraOff, isLocal, ph
           }
         </div>
       )}
+      {isSharing && (
+        <div className="vg-screen-label">
+          <svg viewBox="0 0 24 24" fill="none" width="12" height="12">
+            <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/>
+            <path d="M8 21h8M12 17v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+          {displayName} está compartiendo pantalla
+        </div>
+      )}
+      {isSharing && onFullscreen && (
+        <div className="vg-screen-actions">
+          <button className="vg-screen-btn" onClick={onFullscreen} title="Pantalla completa">
+            <svg viewBox="0 0 24 24" fill="none" width="12" height="12">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Pantalla completa
+          </button>
+        </div>
+      )}
       <div className="vg-footer">
         <span className="vg-name">{isLocal ? `${displayName} (Tú)` : displayName}</span>
         <div className="vg-badges" aria-hidden="true">
-          <span className={`vg-badge-icon ${isMuted ? 'badge-off' : 'badge-on'}`}>
-            <MicIcon active={!isMuted} />
-          </span>
-          <span className={`vg-badge-icon ${isCameraOff ? 'badge-off' : 'badge-on'}`}>
-            <CamIcon active={!isCameraOff} />
-          </span>
+          <span className={`vg-badge-icon ${isMuted ? 'badge-off' : 'badge-on'}`}><MicIcon active={!isMuted} /></span>
+          <span className={`vg-badge-icon ${isCameraOff ? 'badge-off' : 'badge-on'}`}><CamIcon active={!isCameraOff} /></span>
         </div>
       </div>
       {speaking && !isMuted && <div className="vg-speaking-ring" aria-hidden="true" />}
@@ -201,23 +166,20 @@ export function VideoGrid({
   localStream, remoteStreams,
   isMuted, isCameraOff,
   displayName, myUid, joined, myPhotoURL,
+  isScreenSharing,      // yo estoy compartiendo
+  sharingUid,           // uid del participante remoto que comparte (si aplica)
 }) {
-  const [pinnedScreenPeer, setPinnedScreenPeer] = useState(null)
-  const [fullscreenEl, setFullscreenEl]         = useState(null)
-  const screenVideoRef = useRef(null)
+  const videoRef = useRef(null)
 
-  // Separate screen shares from video streams
-  const screenStreams = (remoteStreams || []).filter((s) => s.isScreen)
-  const videoStreams  = (remoteStreams || []).filter((s) => !s.isScreen)
+  const handleFullscreen = useCallback((videoEl) => {
+    if (videoEl && videoEl.requestFullscreen) videoEl.requestFullscreen()
+  }, [])
 
-  const total = 1 + videoStreams.length
+  const total = 1 + (remoteStreams?.length || 0)
   const { cols, solo } = getLayout(total)
 
-  const handleFullscreen = useCallback((stream, peerId) => {
-    // Open fullscreen for this screen share
-    const el = document.getElementById(`screen-fullscreen-${peerId}`)
-    if (el && el.requestFullscreen) el.requestFullscreen()
-  }, [])
+  // ¿Hay alguien compartiendo pantalla? (remoto, via socket event)
+  const sharingRemote = sharingUid ? (remoteStreams || []).find((s) => s.uid === sharingUid) : null
 
   if (!joined) {
     return (
@@ -228,42 +190,54 @@ export function VideoGrid({
     )
   }
 
-  // If there's a pinned screen, show it large + others small
-  const pinnedScreen = screenStreams.find((s) => s.peerId === pinnedScreenPeer)
+  // Si alguien (remoto o yo) comparte pantalla, ese tile va primero y grande
+  const hasScreenShare = isScreenSharing || Boolean(sharingRemote)
 
   return (
-    <div className="vg-root">
-      {/* Screen share tiles at top */}
-      {screenStreams.length > 0 && (
-        <div className="vg-screens-row">
-          {screenStreams.map((s) => (
-            <div key={s.peerId} style={{ position: 'relative' }}>
-              <video
-                id={`screen-fullscreen-${s.peerId}`}
-                style={{ display: 'none' }}
-                ref={(el) => { if (el) { el.srcObject = s.stream; el.play().catch(() => {}) } }}
-              />
-              <ScreenTile
-                stream={s.stream}
-                displayName={s.displayName}
-                isPinned={pinnedScreenPeer === s.peerId}
-                onPin={() => setPinnedScreenPeer((p) => p === s.peerId ? null : s.peerId)}
-                onFullscreen={() => {
-                  const el = document.getElementById(`screen-fullscreen-${s.peerId}`)
-                  if (el) { el.style.display = 'block'; el.requestFullscreen?.() }
-                }}
-              />
-            </div>
-          ))}
+    <div className={`vg-root${hasScreenShare ? ' vg-has-screen' : ''}`}>
+      {/* Si hay screen share remoto, va primero arriba grande */}
+      {sharingRemote && (
+        <div className="vg-screen-featured">
+          <VideoTile
+            stream={sharingRemote.stream}
+            displayName={sharingRemote.displayName}
+            uid={sharingRemote.uid}
+            isMuted={sharingRemote.isMuted}
+            isCameraOff={false}
+            isLocal={false}
+            photoURL={sharingRemote.photoURL}
+            isSharing={true}
+            onFullscreen={() => {
+              const v = document.getElementById(`vg-video-featured`)
+              if (v?.requestFullscreen) v.requestFullscreen()
+            }}
+          />
         </div>
       )}
 
-      {/* Participant tiles */}
+      {/* Si yo comparto, mi tile va primero arriba grande */}
+      {isScreenSharing && !sharingRemote && (
+        <div className="vg-screen-featured">
+          <VideoTile
+            stream={localStream}
+            displayName={displayName}
+            uid={myUid}
+            isMuted={isMuted}
+            isCameraOff={false}
+            isLocal={true}
+            photoURL={myPhotoURL}
+            isSharing={true}
+          />
+        </div>
+      )}
+
+      {/* Grid de participantes */}
       <div
-        className={`vg-grid${solo ? ' vg-grid-solo' : ''}`}
-        style={{ '--vg-cols': cols }}
+        className={`vg-grid${solo && !hasScreenShare ? ' vg-grid-solo' : ''}`}
+        style={{ '--vg-cols': hasScreenShare ? Math.min(cols, 4) : cols }}
         data-count={total}
       >
+        {/* Mi tile (local) — si estoy compartiendo ya aparece arriba, aquí va pequeño */}
         <VideoTile
           stream={localStream}
           displayName={displayName}
@@ -272,8 +246,9 @@ export function VideoGrid({
           isCameraOff={isCameraOff}
           isLocal
           photoURL={myPhotoURL}
+          isSharing={false}
         />
-        {videoStreams.map(({ peerId, uid, displayName: rName, stream, isMuted: rMuted, isCameraOff: rCamOff, photoURL: rPhoto }) => (
+        {(remoteStreams || []).map(({ peerId, uid, displayName: rName, stream, isMuted: rMuted, isCameraOff: rCamOff, photoURL: rPhoto }) => (
           <VideoTile
             key={peerId}
             stream={stream}
@@ -283,6 +258,7 @@ export function VideoGrid({
             isCameraOff={rCamOff}
             isLocal={false}
             photoURL={rPhoto}
+            isSharing={false}
           />
         ))}
       </div>
