@@ -1,8 +1,8 @@
 /**
  * useWebRTC.js
- * Screen share: usa replaceTrack en la conexión PeerJS existente
- * en lugar de crear una segunda llamada (que causa conflictos).
- * Fix iconos: lee isMuted/isCameraOff del evento peer_registered.
+ * Screen share: stream separado mostrado localmente + enviado via PeerJS
+ * con metadata isScreen:true para que los remotos lo identifiquen.
+ * Fix iconos: isMuted/isCameraOff desde peer_registered.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Peer from 'peerjs'
@@ -20,6 +20,7 @@ export function useWebRTC({
   myDisplayName, myPhotoURL,
 }) {
   const [localStream,     setLocalStream]     = useState(null)
+  const [screenStream,    setScreenStream]    = useState(null)   // mi pantalla local
   const [remoteStreams,   setRemoteStreams]    = useState([])
   const [isMuted,         setIsMuted]         = useState(initialMuted)
   const [isCameraOff,     setIsCameraOff]     = useState(initialCameraOff)
@@ -27,51 +28,67 @@ export function useWebRTC({
   const [peerReady,       setPeerReady]       = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
 
-  const peerRef         = useRef(null)
-  const localStreamRef  = useRef(null)
-  const screenStreamRef = useRef(null)
-  const callsRef        = useRef(new Map())  // peerId → PeerJS call object
-  const mountedRef      = useRef(true)
-  const isMutedRef      = useRef(initialMuted)
-  const isCameraOffRef  = useRef(initialCameraOff)
+  const peerRef          = useRef(null)
+  const localStreamRef   = useRef(null)
+  const screenStreamRef  = useRef(null)
+  const callsRef         = useRef(new Map())   // peerId → call (video)
+  const screenCallsRef   = useRef(new Map())   // peerId → call (screen)
+  const mountedRef       = useRef(true)
+  const isMutedRef       = useRef(initialMuted)
+  const isCameraOffRef   = useRef(initialCameraOff)
 
-  // ─── Remote streams ───────────────────────────────────────────
-  const addRemoteStream = useCallback((peerId, uid, displayName, stream, photoURL, remoteMuted, remoteCamOff) => {
+  // ─── Add/remove remote streams ────────────────────────────────
+  const addRemoteStream = useCallback((peerId, uid, displayName, stream, photoURL, isScreen, rMuted, rCamOff) => {
     if (!mountedRef.current) return
     setRemoteStreams((prev) => {
-      if (prev.find((s) => s.peerId === peerId)) return prev
+      const key = isScreen ? `${peerId}-screen` : peerId
+      if (prev.find((s) => s.key === key)) return prev
       return [...prev, {
-        peerId, uid, displayName, stream,
-        isMuted: remoteMuted ?? false,
-        isCameraOff: remoteCamOff ?? false,
-        photoURL: photoURL || null,
+        key, peerId, uid, displayName, stream,
+        isMuted:    isScreen ? false : (rMuted   ?? false),
+        isCameraOff:isScreen ? false : (rCamOff  ?? false),
+        photoURL:   photoURL || null,
+        isScreen,
       }]
     })
   }, [])
 
-  const removeRemoteStream = useCallback((peerId) => {
+  const removeRemoteStream = useCallback((peerId, isScreen) => {
     if (!mountedRef.current) return
-    setRemoteStreams((prev) => prev.filter((s) => s.peerId !== peerId))
-    callsRef.current.delete(peerId)
+    const key = isScreen ? `${peerId}-screen` : peerId
+    setRemoteStreams((prev) => prev.filter((s) => s.key !== key))
+    if (isScreen) screenCallsRef.current.delete(peerId)
+    else callsRef.current.delete(peerId)
   }, [])
 
-  // ─── Call a peer ──────────────────────────────────────────────
-  const callPeer = useCallback((peerId, uid, displayName, photoURL, remoteMuted, remoteCamOff) => {
+  // ─── Call peer for video ──────────────────────────────────────
+  const callPeer = useCallback((peerId, uid, displayName, photoURL, rMuted, rCamOff) => {
     const peer   = peerRef.current
     const stream = localStreamRef.current
     if (!peer || !stream || callsRef.current.has(peerId) || peerId === peer.id) return
-
     const call = peer.call(peerId, stream, {
-      metadata: { uid: myUid, displayName: myDisplayName, photoURL: myPhotoURL },
+      metadata: { uid: myUid, displayName: myDisplayName, photoURL: myPhotoURL, isScreen: false },
     })
     if (!call) return
     callsRef.current.set(peerId, call)
-    call.on('stream', (remoteStream) =>
-      addRemoteStream(peerId, uid, displayName, remoteStream, photoURL, remoteMuted, remoteCamOff)
-    )
-    call.on('close',  () => removeRemoteStream(peerId))
-    call.on('error',  () => removeRemoteStream(peerId))
+    call.on('stream', (s) => addRemoteStream(peerId, uid, displayName, s, photoURL, false, rMuted, rCamOff))
+    call.on('close',  () => removeRemoteStream(peerId, false))
+    call.on('error',  () => removeRemoteStream(peerId, false))
   }, [myUid, myDisplayName, myPhotoURL, addRemoteStream, removeRemoteStream])
+
+  // ─── Call peer for screen ─────────────────────────────────────
+  const callPeerScreen = useCallback((peerId) => {
+    const peer   = peerRef.current
+    const stream = screenStreamRef.current
+    if (!peer || !stream || screenCallsRef.current.has(peerId) || peerId === peer.id) return
+    const call = peer.call(peerId, stream, {
+      metadata: { uid: myUid, displayName: myDisplayName, photoURL: myPhotoURL, isScreen: true },
+    })
+    if (!call) return
+    screenCallsRef.current.set(peerId, call)
+    call.on('close',  () => screenCallsRef.current.delete(peerId))
+    call.on('error',  () => screenCallsRef.current.delete(peerId))
+  }, [myUid, myDisplayName, myPhotoURL])
 
   // ─── Init ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -91,16 +108,12 @@ export function useWebRTC({
           return
         }
       }
-
       if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
 
       stream.getAudioTracks().forEach((t) => { t.enabled = !initialMuted })
       stream.getVideoTracks().forEach((t) => { t.enabled = !initialCameraOff })
-
       localStreamRef.current = stream
       setLocalStream(stream)
-      setIsMuted(initialMuted)
-      setIsCameraOff(initialCameraOff)
       isMutedRef.current     = initialMuted
       isCameraOffRef.current = initialCameraOff
 
@@ -110,26 +123,23 @@ export function useWebRTC({
       peer.on('open', (peerId) => {
         if (!mountedRef.current) return
         registerPeer(socket, roomId, peerId, myDisplayName, myPhotoURL)
-        socket.emit('media_state_change', {
-          roomId,
-          isMuted: initialMuted,
-          isCameraOff: initialCameraOff,
-        })
+        socket.emit('media_state_change', { roomId, isMuted: initialMuted, isCameraOff: initialCameraOff })
         setPeerReady(true)
       })
 
       peer.on('call', (call) => {
         if (!localStreamRef.current) return
+        // Always answer with localStream regardless of call type
         call.answer(localStreamRef.current)
+        const isScreen   = call.metadata?.isScreen    || false
         const callerUid  = call.metadata?.uid         || call.peer
         const callerName = call.metadata?.displayName || callerUid
         const callerPhoto= call.metadata?.photoURL    || null
-        call.on('stream', (remoteStream) =>
-          addRemoteStream(call.peer, callerUid, callerName, remoteStream, callerPhoto, false, false)
-        )
-        call.on('close',  () => removeRemoteStream(call.peer))
-        call.on('error',  () => removeRemoteStream(call.peer))
-        callsRef.current.set(call.peer, call)
+        call.on('stream', (s) => addRemoteStream(call.peer, callerUid, callerName, s, callerPhoto, isScreen, false, false))
+        call.on('close',  () => removeRemoteStream(call.peer, isScreen))
+        call.on('error',  () => removeRemoteStream(call.peer, isScreen))
+        if (isScreen) screenCallsRef.current.set(call.peer, call)
+        else callsRef.current.set(call.peer, call)
       })
 
       peer.on('error', (err) => {
@@ -143,63 +153,61 @@ export function useWebRTC({
 
     return () => {
       mountedRef.current = false
-      callsRef.current.forEach((c) => c.close())
-      callsRef.current.clear()
+      callsRef.current.forEach((c) => c.close()); callsRef.current.clear()
+      screenCallsRef.current.forEach((c) => c.close()); screenCallsRef.current.clear()
       localStreamRef.current?.getTracks().forEach((t) => t.stop())
       localStreamRef.current = null
-      if (screenStreamRef.current) {
-        screenStreamRef.current.getTracks().forEach((t) => t.stop())
-        screenStreamRef.current = null
-      }
-      peerRef.current?.destroy()
-      peerRef.current = null
-      setLocalStream(null)
-      setRemoteStreams([])
-      setIsScreenSharing(false)
-      setPeerReady(false)
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop())
+      screenStreamRef.current = null
+      peerRef.current?.destroy(); peerRef.current = null
+      setLocalStream(null); setScreenStream(null)
+      setRemoteStreams([]); setIsScreenSharing(false); setPeerReady(false)
     }
-  }, [enabled, socket, roomId, myUid, initialCameraOff, initialMuted, addRemoteStream, removeRemoteStream]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [enabled, socket, roomId, myUid, initialCameraOff, initialMuted, addRemoteStream, removeRemoteStream]) // eslint-disable-line
 
   // ─── Socket events ────────────────────────────────────────────
   useEffect(() => {
     if (!socket || !peerReady) return
 
-    const onPeerRegistered = ({ uid, peerId, displayName, photoURL, isMuted: rMuted, isCameraOff: rCamOff }) => {
+    const onPeerRegistered = ({ uid, peerId, displayName, photoURL, isMuted: rM, isCameraOff: rC }) => {
       if (uid === myUid) return
-      callPeer(peerId, uid, displayName, photoURL, rMuted ?? false, rCamOff ?? false)
+      callPeer(peerId, uid, displayName, photoURL, rM ?? false, rC ?? false)
+      // If I'm sharing screen, send it to the new peer
+      if (screenStreamRef.current) callPeerScreen(peerId)
     }
 
     const onParticipantLeft = ({ peerId }) => {
       if (!peerId) return
       callsRef.current.get(peerId)?.close()
-      removeRemoteStream(peerId)
+      removeRemoteStream(peerId, false)
+      screenCallsRef.current.get(peerId)?.close()
+      removeRemoteStream(peerId, true)
     }
 
     const onMediaStateUpdate = ({ uid, isMuted: muted, isCameraOff: camOff }) => {
       setRemoteStreams((prev) =>
-        prev.map((s) => s.uid === uid ? { ...s, isMuted: muted, isCameraOff: camOff } : s)
+        prev.map((s) => (s.uid === uid && !s.isScreen) ? { ...s, isMuted: muted, isCameraOff: camOff } : s)
       )
     }
 
     socket.on('peer_registered',    onPeerRegistered)
     socket.on('participant_left',   onParticipantLeft)
     socket.on('media_state_update', onMediaStateUpdate)
-
     return () => {
       socket.off('peer_registered',    onPeerRegistered)
       socket.off('participant_left',   onParticipantLeft)
       socket.off('media_state_update', onMediaStateUpdate)
     }
-  }, [socket, peerReady, myUid, callPeer, removeRemoteStream])
+  }, [socket, peerReady, myUid, callPeer, callPeerScreen, removeRemoteStream])
 
   const callExistingPeers = useCallback((participants) => {
-    participants.forEach(({ uid, peerId, displayName, photoURL, isMuted: rMuted, isCameraOff: rCamOff }) => {
+    participants.forEach(({ uid, peerId, displayName, photoURL, isMuted: rM, isCameraOff: rC }) => {
       if (uid === myUid || !peerId) return
-      callPeer(peerId, uid, displayName, photoURL, rMuted ?? false, rCamOff ?? false)
+      callPeer(peerId, uid, displayName, photoURL, rM ?? false, rC ?? false)
     })
   }, [myUid, callPeer])
 
-  // ─── Toggle mute ──────────────────────────────────────────────
+  // ─── Toggles ──────────────────────────────────────────────────
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current
     if (!stream) return
@@ -210,7 +218,6 @@ export function useWebRTC({
     socket?.emit('media_state_change', { roomId, isMuted: newMuted, isCameraOff: isCameraOffRef.current })
   }, [socket, roomId])
 
-  // ─── Toggle camera ────────────────────────────────────────────
   const toggleCamera = useCallback(() => {
     const stream = localStreamRef.current
     if (!stream) return
@@ -221,64 +228,40 @@ export function useWebRTC({
     socket?.emit('media_state_change', { roomId, isMuted: isMutedRef.current, isCameraOff: newCamOff })
   }, [socket, roomId])
 
-  // ─── Screen share via replaceTrack ────────────────────────────
-  // En lugar de hacer una segunda llamada PeerJS (que causa conflictos),
-  // reemplazamos el video track en TODAS las conexiones existentes.
-  // Los remotos ven el stream de pantalla en el mismo tile de video.
+  // ─── Screen share ─────────────────────────────────────────────
   const startScreenShare = useCallback(async () => {
     try {
       const sStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' },
-        audio: false,
+        video: { cursor: 'always' }, audio: false,
       })
-
-      const screenTrack = sStream.getVideoTracks()[0]
       screenStreamRef.current = sStream
+      setScreenStream(sStream)
       setIsScreenSharing(true)
-
-      // Reemplazar el video track en todas las conexiones activas
-      callsRef.current.forEach((call) => {
-        const pc = call.peerConnection
-        if (!pc) return
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video')
-        if (sender) sender.replaceTrack(screenTrack).catch(() => {})
-      })
-
       socket?.emit('screen_share_change', { roomId, isSharingScreen: true })
 
-      // Cuando el usuario para desde el botón del navegador
-      screenTrack.addEventListener('ended', () => stopScreenShare())
+      // Send screen to all currently connected peers
+      callsRef.current.forEach((_, peerId) => callPeerScreen(peerId))
+
+      sStream.getVideoTracks()[0].addEventListener('ended', () => stopScreenShare())
     } catch (err) {
       if (err.name !== 'NotAllowedError') setMediaError('No se pudo compartir pantalla.')
     }
-  }, [socket, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, roomId, callPeerScreen]) // eslint-disable-line
 
   const stopScreenShare = useCallback(() => {
     screenStreamRef.current?.getTracks().forEach((t) => t.stop())
     screenStreamRef.current = null
+    screenCallsRef.current.forEach((c) => c.close())
+    screenCallsRef.current.clear()
+    setScreenStream(null)
     setIsScreenSharing(false)
-
-    // Restaurar el video track original de la cámara
-    const camTrack = localStreamRef.current?.getVideoTracks()[0]
-    if (camTrack) {
-      callsRef.current.forEach((call) => {
-        const pc = call.peerConnection
-        if (!pc) return
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video')
-        if (sender) sender.replaceTrack(camTrack).catch(() => {})
-      })
-    }
-
     socket?.emit('screen_share_change', { roomId, isSharingScreen: false })
   }, [socket, roomId])
 
   return {
-    localStream, remoteStreams,
-    isMuted, isCameraOff,
-    mediaError, peerReady,
-    toggleMute, toggleCamera,
-    callExistingPeers,
-    isScreenSharing,
-    startScreenShare, stopScreenShare,
+    localStream, screenStream, remoteStreams,
+    isMuted, isCameraOff, mediaError, peerReady,
+    toggleMute, toggleCamera, callExistingPeers,
+    isScreenSharing, startScreenShare, stopScreenShare,
   }
 }

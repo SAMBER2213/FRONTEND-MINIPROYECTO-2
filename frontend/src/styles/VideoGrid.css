@@ -210,82 +210,104 @@
 }
 
 
-/* ── Root wrapper ─────────────────────────────────────────────────── */
-.vg-root {
+
+/* ════════════════════════════════════════════════════════════════
+   Layout estilo Google Meet con screen share
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Meet layout (con pantalla compartida) ───────────────────────── */
+.vg-meet-layout {
   display: flex;
-  flex-direction: column;
   width: 100%;
   height: 100%;
   gap: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+/* Pantalla grande — izquierda */
+.vg-screen-main {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  background: #070d1a;
+  border-radius: 12px;
   overflow: hidden;
+  border: 2px solid #1d4ed8;
+  box-shadow: 0 0 0 2px rgba(29,78,216,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* ── Screen share featured tile ──────────────────────────────────── */
-.vg-screen-featured {
-  flex: 0 0 55%;
-  padding: 6px 6px 0;
-  min-height: 0;
-}
-
-.vg-screen-featured .vg-tile {
+.vg-screen-video {
   width: 100%;
   height: 100%;
-  border-color: #1d4ed8 !important;
-  box-shadow: 0 0 0 2px rgba(29,78,216,0.35);
+  object-fit: contain;
+  display: block;
 }
 
-/* ── When screen sharing, grid goes smaller ───────────────────────── */
-.vg-has-screen .vg-grid {
-  flex: 1;
-  min-height: 0;
-  max-height: 45%;
-}
-
-/* ── Screen label ─────────────────────────────────────────────────── */
-.vg-screen-label {
+.vg-screen-badge {
   position: absolute;
   top: 10px;
   left: 12px;
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(0,0,0,0.65);
-  color: #e2e8f0;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  backdrop-filter: blur(4px);
-  z-index: 2;
-}
-
-/* ── Screen actions (fullscreen button) ───────────────────────────── */
-.vg-screen-actions {
-  position: absolute;
-  bottom: 40px;
-  right: 10px;
-  display: flex;
-  gap: 6px;
-  z-index: 3;
-  opacity: 0;
-  transition: opacity .2s;
-}
-.vg-tile:hover .vg-screen-actions { opacity: 1; }
-
-.vg-screen-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
   background: rgba(0,0,0,0.7);
   color: #e2e8f0;
-  border: 1px solid rgba(255,255,255,0.15);
-  padding: 5px 10px;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(6px);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.vg-screen-fullscreen {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,0,0,0.7);
+  color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 6px 12px;
   border-radius: 8px;
   font-size: 12px;
   cursor: pointer;
+  opacity: 0;
+  transition: opacity .2s;
   backdrop-filter: blur(6px);
-  transition: all .15s;
 }
-.vg-screen-btn:hover { background: rgba(29,78,216,0.7); border-color: #3b82f6; }
+.vg-screen-main:hover .vg-screen-fullscreen { opacity: 1; }
+.vg-screen-fullscreen:hover { background: rgba(29,78,216,0.8); }
 
-/* ── Sharing tile: video object-fit contain, no mirror ────────────── */
-.vg-sharing .vg-video { transform: none !important; object-fit: contain !important; }
+/* Sidebar derecha — participantes en columna */
+.vg-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Tile compacto (en sidebar) */
+.vg-tile.vg-compact {
+  flex-shrink: 0;
+  height: 140px;
+  min-height: 0;
+}
+
+.vg-tile.vg-compact .vg-avatar-wrap {
+  width: 40px;
+  height: 40px;
+}
+
+.vg-tile.vg-compact .vg-avatar-initial {
+  font-size: 18px;
+}

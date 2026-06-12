@@ -486,8 +486,8 @@ function RoomDetail() {
               myUid={user?.uid}
               joined={hasJoined}
               myPhotoURL={profile?.photoURL || user?.photoURL || null}
+              screenStream={screenStream}
               isScreenSharing={isScreenSharing}
-              sharingUid={sharingUid}
             />
           </div>
 
