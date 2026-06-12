@@ -324,6 +324,8 @@ export function useWebRTC({
     socket?.emit('screen_share_stopped', { roomId, displayName: myDisplayName })
   }, [socket, roomId, myUid, myDisplayName])
 
+  console.log('[DEBUG]', { initialMuted, initialCameraOff, isMuted, isCameraOff, enabled, peerReady })
+
   return {
     localStream, remoteStreams,
     isMuted, isCameraOff,
