@@ -102,7 +102,15 @@ export function useWebRTC({
           stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true })
           if (mountedRef.current) setMediaError('Cámara no disponible. Conectado solo con audio.')
         } catch {
-          if (mountedRef.current) setMediaError('No se pudo acceder a cámara ni micrófono.')
+          if (mountedRef.current) {
+            setMediaError('No se pudo acceder a cámara ni micrófono.')
+            // Reflejar visualmente que no hay mic ni cámara disponibles
+            setIsMuted(true)
+            setIsCameraOff(true)
+            isMutedRef.current = true
+            isCameraOffRef.current = true
+            socket?.emit('media_state_change', { roomId, isMuted: true, isCameraOff: true })
+          }
           return
         }
       }
